@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.38";
+const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const DEBUG_LOG_KEY = "relaiDebugLog";
 const LAST_CONTEXT_PREFS_KEY = "relaiLastContextPreferences";
 let _debugLogGeneration = 0;

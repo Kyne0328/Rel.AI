@@ -8,7 +8,13 @@ const SECRET_PATH_PATTERNS = [
   /(^|\/)\.ssh($|\/)/i,
   /(^|\/)(id_rsa|id_ed25519|known_hosts)$/i,
   /(^|\/).*\.(pem|key|p12|pfx)$/i,
-  /(^|\/)(secrets?|credentials?)(\.|\/|$)/i
+  /(^|\/)(secrets?|credentials?)(\.|\/|$)/i,
+  /(^|\/)(\.npmrc|\.pypirc|\.netrc)$/i,
+  /(^|\/)firebase-adminsdk[^/]*\.json$/i,
+  /(^|\/)service-account[^/]*\.json$/i,
+  /(^|\/)\.aws\//i,
+  /(^|\/)\.azure\//i,
+  /(^|\/)gcloud\/credentials/i
 ];
 
 async function applyPatchFirst(applyRequest, workspace, config, runOpenCodeFallback) {
@@ -173,7 +179,14 @@ function stripQuotedPath(input) {
   if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
     value = value.slice(1, -1);
   }
-  return value;
+  return decodeGitOctalEscapes(value);
+}
+
+function decodeGitOctalEscapes(value) {
+  return value.replace(/(\\[0-7]{3})+/g, (run) => {
+    const bytes = run.match(/\\([0-7]{3})/g).map((m) => parseInt(m.slice(1), 8));
+    return Buffer.from(bytes).toString("utf8");
+  });
 }
 
 function validateContextFiles(applyRequest, workspacePath) {

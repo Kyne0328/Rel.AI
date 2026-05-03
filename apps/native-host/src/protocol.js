@@ -9,7 +9,7 @@ function validateNativeMessage(value, config) {
   const type = requireString(candidate.type, "Message type must be a string.");
 
   if (candidate.protocolVersion !== PROTOCOL_VERSION) {
-    throw new Error(`Unsupported Rel.AI protocol version. Expected ${PROTOCOL_VERSION}.`);
+    throw new Error(`Unsupported Rel.AI protocol version. Extension sent ${candidate.protocolVersion}, host expects ${PROTOCOL_VERSION}. Update the native host or reload the extension.`);
   }
 
   const requestId = requireString(candidate.requestId, "Message requestId must be a string.");
@@ -99,7 +99,7 @@ function validateGeminiConfig(value) {
   const model = optionalString(candidate.model, "Gemini model must be a string when provided.");
   const endpoint = optionalString(candidate.endpoint, "Gemini endpoint must be a string when provided.");
 
-  if (model !== undefined && !/^[A-Za-z0-9._:-]{1,120}$/.test(model)) {
+  if (model !== undefined && !/^[A-Za-z0-9._:/-]{1,120}$/.test(model)) {
     throw new Error("Gemini model contains unsupported characters.");
   }
   if (endpoint !== undefined && !/^https:\/\//.test(endpoint)) {

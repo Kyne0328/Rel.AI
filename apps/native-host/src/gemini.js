@@ -3,6 +3,9 @@ async function improvePromptWithGemini(request, config) {
   if (!apiKey) {
     throw new Error("Gemini API key is not configured. Save one in Rel.AI or run: npm run gemini:key -- YOUR_API_KEY");
   }
+  if (/[\x00-\x1f\x7f]/.test(apiKey)) {
+    throw new Error("Gemini API key contains invalid characters. Paste a clean key without whitespace or control characters.");
+  }
 
   const model = String(config.geminiModel || "gemini-2.5-flash").trim();
   const endpoint = String(config.geminiEndpoint || "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/g, "");

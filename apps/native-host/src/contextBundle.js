@@ -20,7 +20,12 @@ const SECRET_PATH_PATTERNS = [
   /(^|\/)(id_rsa|id_ed25519|known_hosts)$/i,
   /(^|\/).*\.(pem|key|p12|pfx)$/i,
   /(^|\/)(secrets?|credentials?)(\.|\/|$)/i,
-  /(^|\/)(\.npmrc|\.pypirc|\.netrc)$/i
+  /(^|\/)(\.npmrc|\.pypirc|\.netrc)$/i,
+  /(^|\/)firebase-adminsdk[^/]*\.json$/i,
+  /(^|\/)service-account[^/]*\.json$/i,
+  /(^|\/)\.aws\//i,
+  /(^|\/)\.azure\//i,
+  /(^|\/)gcloud\/credentials/i
 ];
 
 const DEFAULT_EXCLUDED_DIRS = new Set([
@@ -127,21 +132,25 @@ function collectReadableFiles(files, workspacePath, maxFileBytes) {
 
   for (const relativePath of files) {
     const absolutePath = path.join(workspacePath, relativePath);
-    const stat = fs.statSync(absolutePath);
-    if (stat.size > maxFileBytes) {
-      skipped.push({ path: relativePath, reason: `larger than ${maxFileBytes} bytes` });
-      continue;
-    }
+    try {
+      const stat = fs.statSync(absolutePath);
+      if (stat.size > maxFileBytes) {
+        skipped.push({ path: relativePath, reason: `larger than ${maxFileBytes} bytes` });
+        continue;
+      }
 
-    const raw = fs.readFileSync(absolutePath);
-    if (looksBinary(raw)) {
-      skipped.push({ path: relativePath, reason: "binary-looking file" });
-      continue;
-    }
+      const raw = fs.readFileSync(absolutePath);
+      if (looksBinary(raw)) {
+        skipped.push({ path: relativePath, reason: "binary-looking file" });
+        continue;
+      }
 
-    const content = raw.toString("utf8");
-    included.push({ path: relativePath, content, byteLength: raw.length, charLength: content.length });
-    totalChars += content.length;
+      const content = raw.toString("utf8");
+      included.push({ path: relativePath, content, byteLength: raw.length, charLength: content.length });
+      totalChars += content.length;
+    } catch (_error) {
+      skipped.push({ path: relativePath, reason: "file unreadable or removed during collection" });
+    }
   }
 
   return { included, skipped, totalChars };
@@ -311,11 +320,27 @@ function makeArchiveFingerprint(workspaceAlias, contextScope, manifest, zip) {
 function writeTempArchive(archiveName, buffer) {
   const root = path.join(os.tmpdir(), "rel-ai-archives");
   fs.mkdirSync(root, { recursive: true });
+  pruneTempArchives(root);
   const safeName = slugify(archiveName.replace(/\.zip$/i, "")).slice(0, 80) || "context";
   const fileName = `${safeName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.zip`;
   const archivePath = path.join(root, fileName);
   fs.writeFileSync(archivePath, buffer);
   return archivePath;
+}
+
+function pruneTempArchives(root) {
+  const maxAgeMs = 4 * 60 * 60 * 1000;
+  const now = Date.now();
+  try {
+    for (const entry of fs.readdirSync(root)) {
+      if (!entry.endsWith(".zip")) continue;
+      const full = path.join(root, entry);
+      try {
+        const stat = fs.statSync(full);
+        if (now - stat.mtimeMs > maxAgeMs) fs.unlinkSync(full);
+      } catch (_error) {}
+    }
+  } catch (_error) {}
 }
 
 function makeBundleHeader(contextRequest, workspace, contextScope) {
@@ -415,11 +440,13 @@ function resolveRequestedFiles(workspacePath, include, exclude, options) {
     ...safeFiles.filter((item) => !priority.has(item))
   ];
 
+  const finalFiles = prioritized.slice(0, options.maxFiles);
+  const finalSet = new Set(finalFiles);
   return {
-    files: prioritized.slice(0, options.maxFiles),
+    files: finalFiles,
     taskMentionedFiles: {
       mentioned: taskMentionedFiles.mentioned,
-      included: taskMentionedFiles.included.filter((item) => prioritized.slice(0, options.maxFiles).includes(item.path)),
+      included: taskMentionedFiles.included.filter((item) => finalSet.has(item.path)),
       missing: taskMentionedFiles.missing
     },
     projectTree

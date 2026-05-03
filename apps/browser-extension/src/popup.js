@@ -733,14 +733,6 @@ function hideArchiveFallback() {
   }
 }
 
-function formatBytes(bytes) {
-  const value = Number(bytes || 0);
-  if (!Number.isFinite(value) || value <= 0) return "unknown size";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
-}
-
 async function downloadLastArchive() {
   if (!lastArchive || !lastArchive.base64) {
     throw new Error("No generated ZIP is available to download. Build the request again in ZIP mode.");
@@ -770,7 +762,12 @@ async function copyLastArchivePath() {
 }
 
 function base64ToBlob(base64, mimeType) {
-  const binary = atob(base64);
+  let binary;
+  try {
+    binary = atob(base64);
+  } catch (_error) {
+    throw new Error("ZIP data is corrupted and cannot be decoded. Build the request again.");
+  }
   const chunkSize = 32768;
   const chunks = [];
   for (let offset = 0; offset < binary.length; offset += chunkSize) {
@@ -787,6 +784,8 @@ function base64ToBlob(base64, mimeType) {
 function setStatus(text, isError) {
   statusEl.textContent = text;
   statusEl.style.color = isError ? "#a40000" : "#176b2c";
+  statusEl.setAttribute("role", isError ? "alert" : "status");
+  statusEl.setAttribute("aria-live", isError ? "assertive" : "polite");
 }
 
 function lines(value) {
@@ -832,7 +831,7 @@ function restoreDraft(draft) {
   if (contextScopeEl) contextScopeEl.value = draft.contextScope || "focused";
   includePathsEl.value = draft.include || "";
   excludePathsEl.value = draft.exclude || "";
-  maxFilesEl.value = draft.maxFiles || "15";
+  maxFilesEl.value = draft.maxFiles || maxFilesEl.defaultValue || "25";
   maxCharsEl.value = draft.maxChars || "90000";
   contextModeEl.value = draft.contextMode || "readable";
   testCommandManualEl.value = draft.testCommandKey || "";

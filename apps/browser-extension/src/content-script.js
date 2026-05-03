@@ -892,11 +892,17 @@
     if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") {
       const start = typeof target.selectionStart === "number" ? target.selectionStart : target.value.length;
       const end = typeof target.selectionEnd === "number" ? target.selectionEnd : target.value.length;
-      target.value = `${target.value.slice(0, start)}${text}${target.value.slice(end)}`;
+      const newValue = `${target.value.slice(0, start)}${text}${target.value.slice(end)}`;
+      const nativeSetter = Object.getOwnPropertyDescriptor(window[target.tagName === "TEXTAREA" ? "HTMLTextAreaElement" : "HTMLInputElement"].prototype, "value");
+      if (nativeSetter && nativeSetter.set) {
+        nativeSetter.set.call(target, newValue);
+      } else {
+        target.value = newValue;
+      }
       const cursor = start + text.length;
       target.selectionStart = cursor;
       target.selectionEnd = cursor;
-      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+      target.dispatchEvent(new Event("input", { bubbles: true }));
       return finishInsert(submit);
     }
 

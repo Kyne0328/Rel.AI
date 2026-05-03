@@ -1,14 +1,21 @@
 const { Buffer } = require("node:buffer");
 
 function readMessages(input, onMessage, onError) {
-  let buffer = Buffer.alloc(0);
+  const chunks = [];
+  let bufferedLength = 0;
 
   input.on("data", (chunk) => {
-    buffer = Buffer.concat([buffer, chunk]);
+    chunks.push(chunk);
+    bufferedLength += chunk.length;
+    if (bufferedLength < 4) return;
+
+    let buffer = Buffer.concat(chunks);
+    chunks.length = 0;
+    bufferedLength = 0;
 
     while (buffer.length >= 4) {
       const messageLength = buffer.readUInt32LE(0);
-      if (messageLength > 8 * 1024 * 1024) {
+      if (messageLength > 64 * 1024 * 1024) {
         onError(new Error("Native message is too large."));
         buffer = Buffer.alloc(0);
         return;
@@ -18,8 +25,8 @@ function readMessages(input, onMessage, onError) {
         return;
       }
 
-      const body = buffer.slice(4, 4 + messageLength).toString("utf8");
-      buffer = buffer.slice(4 + messageLength);
+      const body = buffer.subarray(4, 4 + messageLength).toString("utf8");
+      buffer = buffer.subarray(4 + messageLength);
 
       try {
         const parsed = JSON.parse(body);
@@ -28,9 +35,16 @@ function readMessages(input, onMessage, onError) {
         onError(new Error(`Invalid native message JSON: ${error && error.message ? error.message : String(error)}`));
       }
     }
+
+    if (buffer.length > 0) {
+      chunks.push(buffer);
+      bufferedLength = buffer.length;
+    }
   });
 
-  input.on("error", onError);
+  input.on("error", (error) => {
+    try { onError(error); } catch (_e) {}
+  });
 }
 
 function writeMessage(output, message) {

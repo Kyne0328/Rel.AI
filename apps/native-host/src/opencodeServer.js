@@ -61,7 +61,7 @@ function startOpenCodeServer(workspace, config) {
       status: "starting",
       workspace: workspace.alias,
       workspacePath: workspace.path,
-      pid: child.pid,
+      ...(child.pid !== undefined ? { pid: child.pid } : {}),
       command: [command, ...args].join(" "),
       url,
       startedAt,
