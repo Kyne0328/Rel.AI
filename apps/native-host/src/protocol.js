@@ -298,6 +298,8 @@ function makeResponse(input) {
     ...(input.zipBytes !== undefined ? { zipBytes: input.zipBytes } : {}),
     ...(input.base64Chars !== undefined ? { base64Chars: input.base64Chars } : {}),
     ...(input.compressionRatio !== undefined ? { compressionRatio: input.compressionRatio } : {}),
+    ...(input.taskMentionedFiles ? { taskMentionedFiles: input.taskMentionedFiles } : {}),
+    ...(input.projectTree ? { projectTree: input.projectTree } : {}),
     ...(input.nativeHost ? { nativeHost: input.nativeHost } : {}),
     ...(input.files ? { files: input.files } : {}),
     ...(input.skipped ? { skipped: input.skipped } : {}),

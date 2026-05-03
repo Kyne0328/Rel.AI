@@ -7,6 +7,7 @@ const { spawnSync } = require("node:child_process");
 const DEFAULT_MAX_CONTEXT_FILES = 25;
 const DEFAULT_MAX_CONTEXT_CHARS = 120000;
 const DEFAULT_MAX_FILE_BYTES = 80000;
+const DEFAULT_PROJECT_TREE_ENTRIES = 800;
 const MAX_ZIP_UPLOAD_BASE64_CHARS = 250000;
 const MAX_ZIP_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -57,7 +58,8 @@ function buildContextBundle(contextRequest, workspace, config) {
   const resolution = resolveRequestedFiles(workspace.path, include, contextRequest.exclude || [], {
     maxFiles,
     maxFileBytes,
-    prompt: contextRequest.prompt || ""
+    prompt: contextRequest.prompt || "",
+    maxProjectTreeEntries: getInteger(config && config.maxProjectTreeEntries, DEFAULT_PROJECT_TREE_ENTRIES)
   });
   const files = resolution.files;
 
@@ -71,10 +73,10 @@ function buildContextBundle(contextRequest, workspace, config) {
   }
 
   if (contextMode === "zip") {
-    return buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, resolution.taskMentionedFiles);
+    return buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, resolution.taskMentionedFiles, resolution.projectTree);
   }
 
-  return buildReadableContextBundle(contextRequest, workspace, collected, maxChars, resolution.taskMentionedFiles);
+  return buildReadableContextBundle(contextRequest, workspace, collected, maxChars, resolution.taskMentionedFiles, resolution.projectTree);
 }
 
 function collectReadableFiles(files, workspacePath, maxFileBytes) {
@@ -104,12 +106,14 @@ function collectReadableFiles(files, workspacePath, maxFileBytes) {
   return { included, skipped, totalChars };
 }
 
-function buildReadableContextBundle(contextRequest, workspace, collected, maxChars, taskMentionedFiles) {
+function buildReadableContextBundle(contextRequest, workspace, collected, maxChars, taskMentionedFiles, projectTree) {
   const included = [];
   const skipped = [...collected.skipped];
   let totalChars = 0;
   let bundle = makeBundleHeader(contextRequest, workspace);
-  bundle += "Use only the provided files as context. If more files are needed, ask for another rel-ai-context request. Do not assume unseen files.\n";
+  bundle += "Use the project file tree to preserve exact path casing and avoid duplicate files. Files listed only in the tree are not full file contents; if you need their contents, ask for them.\n";
+  bundle += "Use only the provided file contents as editable context. If more files are needed, ask for another rel-ai-context request. Do not assume unseen file contents.\n";
+  bundle += makeProjectTreeSection(projectTree);
   bundle += makeTaskMentionedFilesSection(taskMentionedFiles);
   bundle += "\n";
 
@@ -145,11 +149,12 @@ function buildReadableContextBundle(contextRequest, workspace, collected, maxCha
     files: included,
     skipped,
     taskMentionedFiles,
+    projectTree,
     bundle
   };
 }
 
-function buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, taskMentionedFiles) {
+function buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, taskMentionedFiles, projectTree) {
   const archiveFiles = collected.included.map((file) => ({
     path: file.path,
     data: Buffer.from(file.content, "utf8")
@@ -180,7 +185,9 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
   let bundle = makeBundleHeader(contextRequest, workspace);
   bundle += "The selected workspace context is attached as a real ZIP file named `" + archiveName + "`.\n";
   bundle += "Use the uploaded ZIP contents as the source context. Do not ask the user to paste the archive contents unless the upload is unavailable.\n";
+  bundle += "Use the project file tree below to preserve exact path casing and avoid duplicate files. Files listed only in the tree are not full file contents; if you need their contents, ask for them.\n";
   bundle += "If you cannot inspect the attached ZIP, ask the user to resend in Readable text mode or select a narrower file list. Do not invent code from the manifest alone.\n\n";
+  bundle += makeProjectTreeSection(projectTree);
   bundle += "Attached ZIP manifest:\n";
   bundle += "```json\n";
   bundle += JSON.stringify({
@@ -192,7 +199,12 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
     zipBytes: zip.length,
     compressionRatio: Number(compressionRatio.toFixed(4)),
     files: manifest,
-    taskMentionedFiles
+    taskMentionedFiles,
+    projectTree: projectTree ? {
+      totalFiles: projectTree.totalFiles,
+      shownFiles: projectTree.shownFiles,
+      omittedFiles: projectTree.omittedFiles
+    } : undefined
   }, null, 2);
   bundle += "\n```\n";
   bundle += makeTaskMentionedFilesSection(taskMentionedFiles);
@@ -226,6 +238,7 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
     files: collected.included.map((file) => file.path),
     skipped: collected.skipped,
     taskMentionedFiles,
+    projectTree,
     bundle
   };
 }
@@ -300,6 +313,7 @@ function resolveRequestedFiles(workspacePath, include, exclude, options) {
     }
   }
 
+  const projectTree = buildProjectTree(pool, options.maxProjectTreeEntries || DEFAULT_PROJECT_TREE_ENTRIES);
   const taskMentionedFiles = resolveTaskMentionedFiles(realWorkspace, pool, String(options.prompt || ""), excludedMatchers);
   for (const item of taskMentionedFiles.included) {
     selected.add(item.path);
@@ -323,7 +337,8 @@ function resolveRequestedFiles(workspacePath, include, exclude, options) {
       mentioned: taskMentionedFiles.mentioned,
       included: taskMentionedFiles.included.filter((item) => prioritized.slice(0, options.maxFiles).includes(item.path)),
       missing: taskMentionedFiles.missing
-    }
+    },
+    projectTree
   };
 }
 
@@ -410,6 +425,91 @@ function uniqueByNormalized(items) {
     }
   }
   return output;
+}
+
+function buildProjectTree(pool, maxEntries) {
+  const safeFiles = [...new Set((Array.isArray(pool) ? pool : [])
+    .map(toPosixPath)
+    .filter(isSafeRelativePath)
+    .filter((item) => !isSecretPath(item)))];
+
+  const ordered = prioritizeTreeFiles(safeFiles);
+  const shown = ordered.slice(0, Math.max(1, maxEntries || DEFAULT_PROJECT_TREE_ENTRIES));
+  const omittedFiles = Math.max(0, safeFiles.length - shown.length);
+  const text = renderProjectTree(shown, omittedFiles, safeFiles.length);
+
+  return {
+    totalFiles: safeFiles.length,
+    shownFiles: shown.length,
+    omittedFiles,
+    text
+  };
+}
+
+function prioritizeTreeFiles(files) {
+  const rootPriority = /^(README(\.[A-Za-z0-9]+)?|package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|tsconfig\.json|jsconfig\.json|vite\.config\.[jt]s|webpack\.config\.[jt]s|LICENSE|CHANGELOG(\.md)?|CONTRIBUTING(\.md)?)$/i;
+  return [...files].sort((a, b) => {
+    const ap = rootPriority.test(a) ? 0 : 1;
+    const bp = rootPriority.test(b) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    const ad = a.split('/').length;
+    const bd = b.split('/').length;
+    if (ad !== bd) return ad - bd;
+    return a.localeCompare(b);
+  });
+}
+
+function renderProjectTree(files, omittedFiles, totalFiles) {
+  const root = { dirs: new Map(), files: [] };
+  for (const filePath of files) {
+    const parts = filePath.split('/').filter(Boolean);
+    let node = root;
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        node.files.push(part);
+      } else {
+        if (!node.dirs.has(part)) node.dirs.set(part, { dirs: new Map(), files: [] });
+        node = node.dirs.get(part);
+      }
+    }
+  }
+
+  const lines = ['.'];
+  renderTreeNode(root, '', lines);
+  if (omittedFiles > 0) {
+    lines.push(`... ${omittedFiles} more file(s) omitted from tree (${totalFiles} total safe workspace files).`);
+  }
+  return lines.join('\n');
+}
+
+function renderTreeNode(node, prefix, lines) {
+  const entries = [
+    ...[...node.dirs.keys()].sort((a, b) => a.localeCompare(b)).map((name) => ({ name, type: 'dir', node: node.dirs.get(name) })),
+    ...node.files.sort((a, b) => a.localeCompare(b)).map((name) => ({ name, type: 'file' }))
+  ];
+
+  for (let i = 0; i < entries.length; i += 1) {
+    const entry = entries[i];
+    const last = i === entries.length - 1;
+    const connector = last ? '└── ' : '├── ';
+    const childPrefix = prefix + (last ? '    ' : '│   ');
+    lines.push(`${prefix}${connector}${entry.name}${entry.type === 'dir' ? '/' : ''}`);
+    if (entry.type === 'dir') {
+      renderTreeNode(entry.node, childPrefix, lines);
+    }
+  }
+}
+
+function makeProjectTreeSection(projectTree) {
+  if (!projectTree || !projectTree.text) {
+    return '';
+  }
+  let text = '\nProject file tree (exact workspace paths and casing; contents are only available for included files):\n';
+  text += '```text\n';
+  text += projectTree.text;
+  text += '\n```\n';
+  return text;
 }
 
 function makeTaskMentionedFilesSection(taskMentionedFiles) {

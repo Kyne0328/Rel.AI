@@ -150,15 +150,16 @@ The dashboard has an optional **Submit to ChatGPT after inserting** checkbox. Ke
 
 ## Context strategy
 
-Rel.AI can provide ChatGPT with three kinds of context:
+Rel.AI provides ChatGPT with four kinds of context:
 
-1. **Selected file contents** from the include list.
-2. **ZIP context** for larger folder selections.
-3. **Task-mentioned files** that already exist in the workspace, such as `README.md`, even when they were outside the selected folder.
+1. **Compact project file tree** by default, preserving exact path casing across the workspace. This helps ChatGPT avoid duplicate files such as `readme.md` when `README.md` already exists.
+2. **Selected file contents** from the include list.
+3. **ZIP context** for larger folder selections.
+4. **Task-mentioned files** that already exist in the workspace, such as `README.md`, even when they were outside the selected folder.
 
-Rel.AI also warns ChatGPT to treat the attached/readable context as the current repo state and to avoid creating files with `/dev/null` or `new file mode` unless the file is absent from the provided context.
+The project file tree is an index of known workspace paths, not full file contents. If ChatGPT needs to edit a tree-only file whose contents were not included, Rel.AI instructs it to ask for more context instead of guessing.
 
-A future release should include a compact project file tree by default so ChatGPT can preserve exact path casing and avoid creating duplicate files such as `readme.md` when `README.md` already exists.
+Rel.AI also warns ChatGPT to treat the attached/readable context as the current repo state and to avoid creating files with `/dev/null` or `new file mode` unless the file is absent from the file tree, manifest, and task-mentioned file check.
 
 ---
 
@@ -287,6 +288,15 @@ Config path:
 
 ---
 
+
+## Debug mode
+
+Diagnostics are hidden in normal use so the dashboard stays release-ready. To open the debug panel, press **Ctrl+Shift+D** while the Rel.AI dashboard is focused.
+
+Debug mode shows recent bridge events, request-building steps, ZIP upload status, native-host responses, and apply/fallback details. Use **Copy debug log** when reporting issues, then press **Ctrl+Shift+D** again to hide diagnostics.
+
+---
+
 ## Troubleshooting
 
 ### Native host not found
@@ -368,6 +378,12 @@ Patch request:
 ---
 
 ## Version history
+
+### v0.9.30
+
+- Includes a compact project file tree by default in generated context so ChatGPT can preserve exact path casing and avoid duplicate files.
+- Documents hidden debug mode and how to copy diagnostics when troubleshooting.
+- Bumps package and extension versions to `0.9.30`.
 
 ### v0.9.29
 
