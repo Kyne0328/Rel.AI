@@ -182,7 +182,7 @@
       throw new Error(`diff is too large. Limit is ${MAX_DIFF_CHARS} characters.`);
     }
 
-    const title = optionalString(candidate.title, "title must be a string when provided.");
+    optionalString(candidate.title, "title must be a string when provided.");
     const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.");
     const testCommandKey = optionalString(candidate.testCommandKey, "testCommandKey must be a string when provided.");
     const testCommand = optionalString(candidate.testCommand, "testCommand must be a string when provided.");
@@ -194,7 +194,6 @@
     return {
       version: APPLY_VERSION,
       ...(workspace ? { workspace } : {}),
-      ...(title ? { title: title.slice(0, 160) } : {}),
       ...(prompt ? { prompt } : {}),
       diff,
       ...(testCommandKey ? { testCommandKey } : {}),
@@ -223,7 +222,7 @@
     }
 
     const workspace = validateWorkspaceAlias(candidate.workspace, "workspace");
-    const title = optionalString(candidate.title, "title must be a string when provided.");
+    optionalString(candidate.title, "title must be a string when provided.");
     const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.");
     const include = validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS);
     const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
@@ -238,7 +237,6 @@
     return {
       version: CONTEXT_VERSION,
       ...(workspace ? { workspace } : {}),
-      ...(title ? { title: title.slice(0, 160) } : {}),
       ...(prompt ? { prompt: prompt.slice(0, 8000) } : {}),
       include,
       contextMode,

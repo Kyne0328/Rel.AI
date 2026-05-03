@@ -26,11 +26,9 @@
       <select id="workspace"></select>
       <input id="workspaceManual" type="text" placeholder="or type alias, e.g. myapp">
 
-      <label for="taskTitle">Title</label>
-      <input id="taskTitle" type="text" placeholder="Fix auth refresh bug">
 
       <label for="taskPrompt">What do you want ChatGPT to do?</label>
-      <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Explain the bug or feature. Rel.AI will attach selected workspace files and instructions for ChatGPT to return metadata + a separate unified diff block."></textarea>
+      <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Describe the change you want. Rel.AI will attach selected workspace files and ask ChatGPT to return an apply block plus a unified diff that matches the current files."></textarea>
 
 
       <label for="includePaths">Allowed files / folders / globs</label>

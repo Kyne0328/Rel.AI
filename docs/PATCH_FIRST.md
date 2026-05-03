@@ -19,7 +19,6 @@ Patch-first mode is the main Rel.AI workflow.
 {
   "version": 1,
   "workspace": "myapp",
-  "title": "Short title",
   "prompt": "Short explanation of what the patch is meant to fix.",
   "context": ["src/auth.ts", "tests/auth.test.ts"],
   "testCommandKey": "unit",

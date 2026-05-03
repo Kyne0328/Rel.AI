@@ -13,7 +13,6 @@ ChatGPT never receives direct filesystem access. Rel.AI reads local files only t
 {
   "version": 1,
   "workspace": "myapp",
-  "title": "Short task title",
   "prompt": "What ChatGPT should do after receiving the files.",
   "include": ["src/auth.ts", "tests/**/*.test.ts"],
   "exclude": ["**/*.snap"],

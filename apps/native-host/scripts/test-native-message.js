@@ -10,7 +10,6 @@ const sample = {
   apply: {
     version: 1,
     workspace: "myapp",
-    title: "Smoke test patch",
     prompt: "Replace hello with hello from Rel.AI.",
     testCommandKey: "unit",
     fallback: {

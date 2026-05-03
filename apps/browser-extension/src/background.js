@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.25";
+const EXTENSION_VERSION = "0.9.26";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;
@@ -55,7 +55,6 @@ function summarizeMessageForDebug(message) {
   }
   if (message.task) {
     summary.task = {
-      title: message.task.title,
       hasPrompt: Boolean(message.task.prompt),
       promptLength: String(message.task.prompt || "").length,
       fallbackEnabled: Boolean(message.task.fallbackEnabled),
@@ -380,7 +379,6 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
     ok: Boolean(inserted && inserted.ok),
     type: "relai.chatgptRequest",
     workspace: response.workspace,
-    title: response.title || context.title || "",
     fileCount: response.fileCount || 0,
     totalChars: response.totalChars || 0,
     contextMode: response.contextMode || context.contextMode || "readable",
@@ -1866,7 +1864,6 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
 }
 
 function buildChatGPTRequestPrompt(context, task, response) {
-  const title = String(task.title || context.title || "Rel.AI code request").trim();
   const userPrompt = String(task.prompt || context.prompt || "").trim();
   const testCommandKey = String(task.testCommandKey || "").trim();
   const fallbackEnabled = task.fallbackEnabled === true;
@@ -1875,7 +1872,6 @@ function buildChatGPTRequestPrompt(context, task, response) {
   const metadataTemplate = {
     version: 1,
     workspace,
-    title,
     prompt: userPrompt.slice(0, 1000),
     ...(testCommandKey ? { testCommandKey } : {}),
     fallback: {
@@ -1887,19 +1883,19 @@ function buildChatGPTRequestPrompt(context, task, response) {
 
   const baseInstructions = `Rel.AI code request
 
-Task title: ${title}
 Workspace alias: ${workspace}
 Context mode: ${contextMode}
 
-User task:
+Task:
 ${userPrompt}
 
 Instructions for your response:
-- Produce code changes as a unified git diff.
+- Inspect the attached/readable workspace context before producing a patch. Treat it as the current repository state.
+- Produce code changes as a unified git diff that applies cleanly with git apply --check.
 - Do NOT put the diff inside a JSON string. Raw multiline diffs inside JSON break parsing.
 - When ready to apply, reply with exactly two fenced code blocks and no extra prose:
 
-First block: rel-ai-apply metadata JSON only, no diff field:
+First block: rel-ai-apply metadata JSON only, no diff field and no title field:
 \`\`\`rel-ai-apply
 ${JSON.stringify(metadataTemplate, null, 2)}
 \`\`\`
@@ -1914,12 +1910,15 @@ diff --git a/path/to/file b/path/to/file
 +new
 \`\`\`
 
-Rules:
+Patch correctness rules:
 - Keep paths relative to the workspace.
 - Do not include absolute paths or ../ paths.
 - Do not include a raw testCommand. Use testCommandKey only if provided.
 - Prefer the smallest safe change. Do not refactor unrelated code.
-- If more context is required, reply with a \`\`\`rel-ai-context block listing the additional files needed instead of guessing.
+- Match the existing files exactly as they appear in the uploaded/readable context.
+- Before creating a file with /dev/null or new file mode, verify that the file is absent from the context and manifest.
+- If a file already exists, modify it with a normal diff; do not mark it as a new file.
+- If the current contents of a required file are missing or uncertain, reply with a \`\`\`rel-ai-context block listing the additional files needed instead of guessing.
 `;
 
   if (contextMode === "zip") {

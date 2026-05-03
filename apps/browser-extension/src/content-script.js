@@ -642,7 +642,6 @@
     const applyMarkers = [
       "diff",
       "diffLines",
-      "title",
       "prompt",
       "testCommandKey",
       "testCommand",
@@ -847,7 +846,6 @@
       const metaGrid = document.createElement("div");
       metaGrid.className = "relai-preview-grid";
       addPreviewField(metaGrid, "Workspace", preview.workspace || "missing");
-      addPreviewField(metaGrid, "Title", preview.title || "Untitled patch");
       addPreviewField(metaGrid, "Test command", preview.testCommandKey || preview.testCommand || "none");
       addPreviewField(metaGrid, "Fallback from patch", preview.fallbackEnabled ? "enabled" : "disabled");
       addPreviewField(metaGrid, "Files", preview.files.length ? preview.files.join("\n") : "No recognizable paths found");
@@ -942,7 +940,6 @@
   function parseApplyPreview(text) {
     const result = {
       workspace: "",
-      title: "",
       testCommandKey: "",
       testCommand: "",
       fallbackEnabled: false,
@@ -963,7 +960,6 @@
 
       if (metadata) {
         result.workspace = typeof metadata.workspace === "string" ? metadata.workspace : "";
-        result.title = typeof metadata.title === "string" ? metadata.title : "";
         result.testCommandKey = typeof metadata.testCommandKey === "string" ? metadata.testCommandKey : "";
         result.testCommand = typeof metadata.testCommand === "string" ? metadata.testCommand : "";
         result.fallbackEnabled = Boolean(metadata.fallback && metadata.fallback.enabled);

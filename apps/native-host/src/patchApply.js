@@ -19,8 +19,7 @@ async function applyPatchFirst(applyRequest, workspace, config, runOpenCodeFallb
   const result = {
     ok: false,
     type: "relai.apply",
-    workspace: workspace.alias,
-    ...(applyRequest.title ? { title: applyRequest.title } : {})
+    workspace: workspace.alias
   };
 
   try {

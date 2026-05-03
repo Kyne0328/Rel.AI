@@ -4,7 +4,6 @@ const contextManualEl = document.getElementById("contextManual");
 const inlineButtonsEl = document.getElementById("inlineButtons");
 const workspaceEl = document.getElementById("workspace");
 const workspaceManualEl = document.getElementById("workspaceManual");
-const taskTitleEl = document.getElementById("taskTitle");
 const taskPromptEl = document.getElementById("taskPrompt");
 const includePathsEl = document.getElementById("includePaths");
 const excludePathsEl = document.getElementById("excludePaths");
@@ -102,7 +101,7 @@ testCommandKeyEl.addEventListener("change", () => {
   }
 });
 
-for (const el of [workspaceManualEl, taskTitleEl, taskPromptEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl]) {
+for (const el of [workspaceManualEl, taskPromptEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl]) {
   el.addEventListener("change", saveDraft);
   el.addEventListener("input", debounce(saveDraft, 300));
 }
@@ -191,7 +190,6 @@ async function loadWorkspaceDir(dir) {
 
 async function composeRequest() {
   const workspace = clean(workspaceManualEl.value || workspaceEl.value);
-  const title = clean(taskTitleEl.value) || "Rel.AI code request";
   const prompt = clean(taskPromptEl.value);
   const include = lines(includePathsEl.value);
   const exclude = lines(excludePathsEl.value);
@@ -202,7 +200,6 @@ async function composeRequest() {
 
   dashboardLog("compose.validate.start", {
     workspace,
-    titleLength: title.length,
     promptLength: prompt.length,
     includeCount: include.length,
     excludeCount: exclude.length,
@@ -228,7 +225,6 @@ async function composeRequest() {
   const contextRequest = {
     version: 1,
     workspace,
-    title,
     prompt,
     include,
     ...(exclude.length ? { exclude } : {}),
@@ -252,8 +248,7 @@ async function composeRequest() {
     type: "relai.composeChatGPTRequest",
     context: contextRequest,
     task: {
-      title,
-      prompt,
+        prompt,
       testCommandKey,
       fallbackEnabled: fallbackEnabledEl.checked
     },
@@ -434,7 +429,6 @@ function summarizeDashboardState() {
   return {
     workspaceSelect: clean(workspaceEl && workspaceEl.value),
     workspaceManual: clean(workspaceManualEl && workspaceManualEl.value),
-    titleLength: String(taskTitleEl && taskTitleEl.value || "").length,
     promptLength: String(taskPromptEl && taskPromptEl.value || "").length,
     includeCount: lines(includePathsEl && includePathsEl.value || "").length,
     excludeCount: lines(excludePathsEl && excludePathsEl.value || "").length,
@@ -790,7 +784,6 @@ function positiveInteger(value) {
 async function saveDraft() {
   const draft = {
     workspace: workspaceManualEl.value,
-    title: taskTitleEl.value,
     prompt: taskPromptEl.value,
     include: includePathsEl.value,
     exclude: excludePathsEl.value,
@@ -806,7 +799,6 @@ async function saveDraft() {
 
 function restoreDraft(draft) {
   workspaceManualEl.value = draft.workspace || "";
-  taskTitleEl.value = draft.title || "";
   taskPromptEl.value = draft.prompt || "";
   includePathsEl.value = draft.include || "";
   excludePathsEl.value = draft.exclude || "";

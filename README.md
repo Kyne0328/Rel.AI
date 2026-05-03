@@ -114,7 +114,6 @@ First block: metadata only:
 {
   "version": 1,
   "workspace": "myapp",
-  "title": "Fix auth refresh bug",
   "prompt": "Fix the auth refresh bug. Keep the public API unchanged.",
   "testCommandKey": "unit",
   "fallback": {
@@ -157,7 +156,6 @@ Rel.AI also supports:
 When ChatGPT returns a `rel-ai-apply` block plus a `diff` block, the inline **Apply with Rel.AI** button opens a confirmation panel first. It shows:
 
 - workspace alias
-- title
 - affected files
 - configured test command key
 - whether OpenCode fallback is enabled

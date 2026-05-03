@@ -19,9 +19,6 @@ function buildFallbackPrompt(applyRequest, workspace, failure) {
   lines.push("- At the end, summarize changed files and any checks run.");
   lines.push("");
   lines.push(`Workspace alias: ${workspace.alias}`);
-  if (applyRequest.title) {
-    lines.push(`Title: ${applyRequest.title}`);
-  }
   if (applyRequest.prompt) {
     lines.push("");
     lines.push("Original ChatGPT task summary:");
@@ -73,10 +70,6 @@ async function runOpenCodeFallback(applyRequest, workspace, config, failure) {
   const agent = selectAgent(applyRequest, config);
   if (agent) {
     args.push("--agent", agent);
-  }
-
-  if (applyRequest.title) {
-    args.push("--title", `Rel.AI fallback: ${applyRequest.title}`.slice(0, 120));
   }
 
   args.push(`Read ${promptFile.relativePath} and execute the Rel.AI fallback instructions. Do not modify files under .relai unless explicitly necessary.`);

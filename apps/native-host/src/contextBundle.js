@@ -136,7 +136,6 @@ function buildReadableContextBundle(contextRequest, workspace, collected, maxCha
     type: "relai.context",
     contextMode: "readable",
     workspace: workspace.alias,
-    title: contextRequest.title || "",
     fileCount: included.length,
     totalChars,
     files: included,
@@ -169,8 +168,8 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
 
   const originalChars = collected.totalChars;
   const compressionRatio = originalChars > 0 ? zip.length / originalChars : 0;
-  const safeTitle = slugify(contextRequest.title || workspace.alias || "workspace").slice(0, 80) || "workspace";
-  const archiveName = `rel-ai-${safeTitle}.zip`;
+  const safeTask = slugify(contextRequest.prompt || workspace.alias || "workspace").slice(0, 80) || "workspace";
+  const archiveName = `rel-ai-${safeTask}.zip`;
   const archivePath = writeTempArchive(archiveName, zip);
 
   let bundle = makeBundleHeader(contextRequest, workspace);
@@ -212,7 +211,6 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
     ...(includeArchiveBase64 ? { archiveBase64: base64 } : {}),
     archiveBase64Omitted: !includeArchiveBase64,
     workspace: workspace.alias,
-    title: contextRequest.title || "",
     fileCount: collected.included.length,
     totalChars: originalChars,
     zipBytes: zip.length,
@@ -236,15 +234,17 @@ function writeTempArchive(archiveName, buffer) {
 }
 
 function makeBundleHeader(contextRequest, workspace) {
-  const title = contextRequest.title ? `Task: ${contextRequest.title}\n` : "";
-  const prompt = contextRequest.prompt ? `${contextRequest.prompt}\n` : "";
-  let header = `Rel.AI workspace context\nWorkspace alias: ${workspace.alias}\n${title}\n`;
-  if (prompt) {
-    header += `User request:\n${prompt}\n`;
+  let header = `Rel.AI workspace context
+Workspace alias: ${workspace.alias}
+`;
+  if (contextRequest.prompt) {
+    header += `Task:
+${contextRequest.prompt}
+`;
   }
-  return header;
+  return `${header}
+`;
 }
-
 function makeSkippedSection(skipped) {
   let text = "\nSkipped files:\n";
   for (const item of skipped.slice(0, 50)) {

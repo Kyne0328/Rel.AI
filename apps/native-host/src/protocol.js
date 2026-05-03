@@ -90,7 +90,7 @@ function validateApplyRequest(value, config) {
     throw new Error(`Diff is too large. Limit is ${maxDiffChars} characters.`);
   }
 
-  const title = optionalString(candidate.title, "Apply title must be a string when provided.");
+  optionalString(candidate.title, "Apply title must be a string when provided.");
   const prompt = optionalString(candidate.prompt, "Apply prompt must be a string when provided.");
   const testCommandKey = optionalString(candidate.testCommandKey, "testCommandKey must be a string when provided.");
   if (testCommandKey !== undefined && !/^[A-Za-z0-9._-]{1,64}$/.test(testCommandKey)) {
@@ -106,7 +106,6 @@ function validateApplyRequest(value, config) {
   return {
     version: APPLY_VERSION,
     workspace,
-    ...(title ? { title: title.slice(0, 160) } : {}),
     ...(prompt ? { prompt } : {}),
     diff: trimmedDiff,
     ...(testCommandKey ? { testCommandKey } : {}),
@@ -136,7 +135,7 @@ function validateContextRequest(value, config) {
   }
 
   const workspace = validateWorkspaceAlias(candidate.workspace, "Context workspace");
-  const title = optionalString(candidate.title, "Context title must be a string when provided.");
+  optionalString(candidate.title, "Context title must be a string when provided.");
   const prompt = optionalString(candidate.prompt, "Context prompt must be a string when provided.");
   const include = validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS);
   const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
@@ -155,7 +154,6 @@ function validateContextRequest(value, config) {
   return {
     version: CONTEXT_VERSION,
     workspace,
-    ...(title ? { title: title.slice(0, 160) } : {}),
     ...(prompt ? { prompt: prompt.slice(0, 8000) } : {}),
     include,
     contextMode,
@@ -283,7 +281,6 @@ function makeResponse(input) {
     ...(input.limits ? { limits: input.limits } : {}),
     ...(input.fallbackModel !== undefined ? { fallbackModel: input.fallbackModel } : {}),
     ...(input.fallbackAgent !== undefined ? { fallbackAgent: input.fallbackAgent } : {}),
-    ...(input.title ? { title: input.title } : {}),
     ...(input.dryRun ? { dryRun: true } : {}),
     ...(input.gitCheck ? { gitCheck: input.gitCheck } : {}),
     ...(input.gitApply ? { gitApply: input.gitApply } : {}),

@@ -9,7 +9,6 @@ Do not put raw multiline diffs inside JSON strings.
 {
   "version": 1,
   "workspace": "myapp",
-  "title": "Fix auth refresh bug",
   "prompt": "Fix the auth refresh bug. Keep the public API unchanged.",
   "context": ["src/auth.ts", "tests/auth.test.ts"],
   "testCommandKey": "unit",
