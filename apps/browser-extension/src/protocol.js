@@ -183,6 +183,7 @@
     }
 
     optionalString(candidate.title, "title must be a string when provided.");
+    const summary = optionalString(candidate.summary, "summary must be a string when provided.");
     const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.");
     const testCommandKey = optionalString(candidate.testCommandKey, "testCommandKey must be a string when provided.");
     const testCommand = optionalString(candidate.testCommand, "testCommand must be a string when provided.");
@@ -195,6 +196,7 @@
       version: APPLY_VERSION,
       ...(workspace ? { workspace } : {}),
       ...(prompt ? { prompt } : {}),
+      ...(summary ? { summary: summary.slice(0, 1200) } : {}),
       diff,
       ...(testCommandKey ? { testCommandKey } : {}),
       ...(testCommand ? { testCommand } : {}),
@@ -223,6 +225,7 @@
 
     const workspace = validateWorkspaceAlias(candidate.workspace, "workspace");
     optionalString(candidate.title, "title must be a string when provided.");
+    const summary = optionalString(candidate.summary, "summary must be a string when provided.");
     const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.");
     const include = validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS);
     const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);

@@ -31,3 +31,8 @@ diff --git a/src/auth.ts b/src/auth.ts
 ````
 
 The older JSON-with-`diff` format and raw diff blocks are still accepted for compatibility, but the two-block format is preferred.
+
+
+## Plan-first mode
+
+Rel.AI can ask ChatGPT to return a `rel-ai-plan` block before generating a patch. The user approves the plan in ChatGPT, then ChatGPT returns the normal `rel-ai-apply` metadata block plus a separate unified diff. If required file contents are missing, ChatGPT should return `rel-ai-context` automatically instead of guessing.

@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.32";
+const EXTENSION_VERSION = "0.9.33";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;
@@ -382,6 +382,7 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
     archivePath: response.archivePath || "",
     archiveBase64: response.contextMode === "zip" && !(inserted && inserted.uploaded) ? (response.archiveBase64 || "") : "",
     archiveUploaded: Boolean(inserted && inserted.uploaded),
+    responseMode: String((task && task.responseMode) || "apply"),
     uploadMethod: inserted && inserted.uploadMethod,
     uploadError: inserted && inserted.uploadError,
     files: response.files || [],
@@ -1607,10 +1608,13 @@ function buildChatGPTRequestPrompt(context, task, response) {
   const fallbackEnabled = task.fallbackEnabled === true;
   const workspace = context.workspace;
   const contextMode = response.contextMode || context.contextMode || "readable";
+  const contextScope = response.contextScope || context.contextScope || "focused";
+  const responseMode = String(task.responseMode || "apply").trim().toLowerCase() === "plan" ? "plan" : "apply";
   const metadataTemplate = {
     version: 1,
     workspace,
     prompt: userPrompt.slice(0, 1000),
+    summary: "Briefly explain what this patch changes and why.",
     ...(testCommandKey ? { testCommandKey } : {}),
     fallback: {
       enabled: fallbackEnabled,
@@ -1619,21 +1623,53 @@ function buildChatGPTRequestPrompt(context, task, response) {
     }
   };
 
+  const planTemplate = {
+    version: 1,
+    workspace,
+    prompt: userPrompt.slice(0, 1000),
+    summary: "Briefly explain the intended change.",
+    plan: [
+      "Step 1: inspect the relevant files from the provided context.",
+      "Step 2: describe the smallest safe changes needed.",
+      "Step 3: list validation or tests to run."
+    ],
+    filesToChange: ["path/to/file.ext"],
+    risks: ["Any compatibility, migration, or uncertain-context risks."],
+    validation: ["Checks the user should run or Rel.AI should run if configured."],
+    needsContext: []
+  };
+
   const taskFileNote = makeTaskFileNote(response);
-  const baseInstructions = `Rel.AI code request
+  const commonHeader = `Rel.AI code request
 
 Workspace alias: ${workspace}
 Context mode: ${contextMode}
-Context scope: ${response.contextScope || context.contextScope || "focused"}
-${taskFileNote}
-Task:
+Context scope: ${contextScope}
+Response mode: ${responseMode === "plan" ? "plan first" : "apply-ready patch"}
+${taskFileNote}Task:
 ${userPrompt}
+`;
 
-Instructions for your response:
-- Inspect the attached/readable workspace context before producing a patch. Treat it as the current repository state.
+  const contextRules = `
+Context and correctness rules:
+- Inspect the attached/readable workspace context before responding. Treat it as the current repository state.
 - Use the compact project file tree to preserve exact path casing and determine whether files already exist.
 - File-tree entries prove paths exist, but they do not provide contents unless the file is also included in the readable context or ZIP manifest.
+- If a required file is mentioned by the task but missing from the manifest/context, or if it appears only in the file tree without contents, immediately reply with a \`\`\`rel-ai-context block asking for that file instead of guessing. Do this automatically; do not wait for the user to ask you to request more context.
+- If broad repository context is required, ask for full repo upload mode only when narrower follow-up context is insufficient.
+- Keep paths relative to the workspace.
+- Do not include absolute paths or ../ paths.
+- Prefer the smallest safe change. Do not refactor unrelated code.
+- Match the existing files exactly as they appear in the uploaded/readable context.
+- Use the exact file path and filename casing shown in the manifest/context. For example, do not use readme.md if the manifest says README.md.
+- Before creating a file with /dev/null or new file mode, verify that the file is absent from the context, manifest, file tree, and task-mentioned file check.
+- If a file already exists, modify it with a normal diff; do not mark it as a new file.
+`;
+
+  const applyInstructions = `
+Instructions for your response:
 - Produce code changes as a unified git diff that applies cleanly with git apply --check.
+- Include a brief summary in the rel-ai-apply metadata so the user understands what will change before applying.
 - Do NOT put the diff inside a JSON string. Raw multiline diffs inside JSON break parsing.
 - When ready to apply, reply with exactly two fenced code blocks and no extra prose:
 
@@ -1652,18 +1688,24 @@ diff --git a/path/to/file b/path/to/file
 +new
 \`\`\`
 
-Patch correctness rules:
-- Keep paths relative to the workspace.
-- Do not include absolute paths or ../ paths.
-- Do not include a raw testCommand. Use testCommandKey only if provided.
-- Prefer the smallest safe change. Do not refactor unrelated code.
-- Match the existing files exactly as they appear in the uploaded/readable context.
-- Use the exact file path and filename casing shown in the manifest/context. For example, do not use readme.md if the manifest says README.md.
-- Before creating a file with /dev/null or new file mode, verify that the file is absent from the context, manifest, and task-mentioned file check.
-- If a file already exists, modify it with a normal diff; do not mark it as a new file.
-- If a required file is mentioned by the task but missing from the manifest/context, or if it appears only in the file tree without contents, reply with a \`\`\`rel-ai-context block asking for that file instead of creating a guessed file.
-- If broad repository context is required, ask for full repo archive mode only when narrower follow-up context is insufficient.
-`;
+Patch correctness rules:${contextRules}`;
+
+  const planInstructions = `
+Instructions for your response:
+- First decide whether the provided context is enough.
+- If required file contents are missing or uncertain, reply only with a \`\`\`rel-ai-context block listing the exact additional files needed. Do this automatically; do not wait for the user to ask for it.
+- If the context is enough, do not produce a diff yet. Reply with exactly one fenced \`\`\`rel-ai-plan block and no extra prose.
+- The plan must be brief, specific, and reviewable by the user before any code is generated.
+- After the user approves the plan, produce the normal rel-ai-apply metadata block with a summary plus a separate unified diff block.
+
+Plan block format:
+\`\`\`rel-ai-plan
+${JSON.stringify(planTemplate, null, 2)}
+\`\`\`
+
+Planning correctness rules:${contextRules}`;
+
+  const baseInstructions = `${commonHeader}${responseMode === "plan" ? planInstructions : applyInstructions}`;
 
   if (contextMode === "zip") {
     const archiveName = response.archiveName || "rel-ai-context.zip";
@@ -1677,6 +1719,7 @@ ${response.bundle}`;
   }
 
   return `${baseInstructions}
+Readable context:
 Use only the readable workspace context below unless you explicitly ask for more files. Do not assume unseen files.
 
 ${response.bundle}`;

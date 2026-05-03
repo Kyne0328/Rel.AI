@@ -9,6 +9,7 @@ const DEFAULT_MAX_CONTEXT_CHARS = 120000;
 const DEFAULT_MAX_FILE_BYTES = 80000;
 const DEFAULT_PROJECT_TREE_ENTRIES = 800;
 const DEFAULT_FULL_REPO_MAX_FILES = 500;
+const FULL_REPO_SCOPE = "full";
 const MAX_ZIP_UPLOAD_BASE64_CHARS = 250000;
 const MAX_ZIP_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -31,12 +32,45 @@ const DEFAULT_EXCLUDED_DIRS = new Set([
   ".nuxt",
   ".turbo",
   ".cache",
+  ".parcel-cache",
+  ".vite",
+  ".svelte-kit",
+  ".angular",
+  ".gradle",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
   ".venv",
   "venv",
   "__pycache__",
   "target",
-  "vendor"
+  "vendor",
+  "out",
+  "tmp",
+  "temp",
+  "logs",
+  ".idea",
+  ".vs",
+  ".vercel",
+  ".netlify",
+  ".output",
+  "Pods"
 ]);
+
+const FULL_REPO_NOISE_FILE_PATTERNS = [
+  /(^|\/)\.DS_Store$/i,
+  /(^|\/)Thumbs\.db$/i,
+  /(^|\/)desktop\.ini$/i,
+  /(^|\/)npm-debug\.log$/i,
+  /(^|\/)(yarn|pnpm)-debug\.log$/i,
+  /(^|\/)yarn-error\.log$/i,
+  /(^|\/)\.eslintcache$/i,
+  /(^|\/).*\.tsbuildinfo$/i,
+  /(^|\/).*\.log$/i,
+  /(^|\/).*\.(tmp|temp|bak|swp|swo)$/i,
+  /(^|\/).*\.map$/i,
+  /(^|\/).*\.min\.(js|css)$/i
+];
 
 const BINARY_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp", ".pdf",
@@ -191,7 +225,7 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
 
   let bundle = makeBundleHeader(contextRequest, workspace, contextScope);
   bundle += makeContextScopeGuidance(contextScope);
-  bundle += (contextScope === "full" ? "The safe full-repo workspace context is attached as a real ZIP file named `" : "The selected workspace context is attached as a real ZIP file named `") + archiveName + "`.\n";
+  bundle += (contextScope === "full" ? "The filtered full-repo workspace context is attached as a real ZIP file named `" : "The selected workspace context is attached as a real ZIP file named `") + archiveName + "`.\n";
   bundle += "Use the uploaded ZIP contents as the source context. Do not ask the user to paste the archive contents unless the upload is unavailable.\n";
   bundle += "Use the project file tree below to preserve exact path casing and avoid duplicate files. Files listed only in the tree are not full file contents; if you need their contents, ask for them.\n";
   bundle += "If you cannot inspect the attached ZIP, ask the user to resend in Readable text mode or select a narrower file list. Do not invent code from the manifest alone.\n\n";
@@ -279,7 +313,7 @@ ${contextRequest.prompt}
 }
 function makeContextScopeGuidance(contextScope) {
   if (contextScope === "full") {
-    return "Context scope is Full repo archive: Rel.AI included safe Git-visible workspace files up to the configured limit while excluding ignored directories, binary files, and secret-looking paths. Treat skipped files as unavailable and ask for more context if needed.\n";
+    return "Context scope is Full repo upload (filtered): Rel.AI included safe Git-visible workspace files up to the configured limit while excluding ignored paths, dependency folders, build outputs, caches, logs, binaries, generated artifacts, and secret-looking paths. Treat skipped files as unavailable and ask for more context if needed.\n";
   }
   if (contextScope === "selected") {
     return "Context scope is Selected only: Rel.AI included the selected files/folders/globs plus any safe task-mentioned files that already exist. Do not assume unselected file contents.\n";
@@ -298,11 +332,12 @@ function makeSkippedSection(skipped) {
 function resolveRequestedFiles(workspacePath, include, exclude, options) {
   const realWorkspace = fs.realpathSync(workspacePath);
   const gitFiles = listGitVisibleFiles(realWorkspace);
-  const pool = gitFiles.length > 0 ? gitFiles : walkWorkspace(realWorkspace);
+  const rawPool = gitFiles.length > 0 ? gitFiles : walkWorkspace(realWorkspace);
+  const pool = rawPool.filter((candidate) => !isUnnecessaryContextPath(candidate));
   const excludedMatchers = exclude.map(makeMatcher);
   const selected = new Set();
 
-  if (options.contextScope === "full") {
+  if (options.contextScope === FULL_REPO_SCOPE) {
     for (const candidate of pool) {
       if (!isExcluded(candidate, excludedMatchers)) {
         selected.add(candidate);
@@ -677,6 +712,15 @@ function isExcluded(candidate, matchers) {
 function isSecretPath(relativePath) {
   const posix = toPosixPath(relativePath);
   return SECRET_PATH_PATTERNS.some((pattern) => pattern.test(posix));
+}
+
+function isUnnecessaryContextPath(relativePath) {
+  const posix = toPosixPath(relativePath);
+  const parts = posix.split("/").filter(Boolean);
+  if (parts.some((part) => DEFAULT_EXCLUDED_DIRS.has(part))) {
+    return true;
+  }
+  return FULL_REPO_NOISE_FILE_PATTERNS.some((pattern) => pattern.test(posix));
 }
 
 function looksBinary(buffer) {

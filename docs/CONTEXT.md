@@ -9,7 +9,7 @@ Rel.AI also supports three context scopes:
 
 - **Focused**: compact project file tree + selected context + safe task-mentioned files. This is the recommended default.
 - **Selected only**: compact project file tree + explicitly selected files/folders/globs + safe task-mentioned files.
-- **Full repo archive**: advanced/slow ZIP mode that packages safe Git-visible workspace files while respecting excludes, `.gitignore`, secret-path blocking, binary detection, and file limits.
+- **Full repo upload**: advanced/slow ZIP mode that packages safe filtered workspace files while respecting excludes, `.gitignore`, secret-path blocking, binary detection, and file limits.
 
 ChatGPT never receives direct filesystem access. Rel.AI reads local files only through the native host after you choose a workspace alias and context scope.
 
@@ -31,7 +31,7 @@ ChatGPT never receives direct filesystem access. Rel.AI reads local files only t
 
 Use `contextMode: "zip"` for real ZIP upload mode.
 
-Use `contextScope: "full"` for full repo archive mode. Full repo archive mode automatically uses ZIP attachment and can omit `include`.
+Use `contextScope: "full"` for full repo upload mode. Full repo upload mode automatically uses ZIP attachment and can omit `include`.
 
 ## Dashboard workflow
 
@@ -39,8 +39,8 @@ Use `contextScope: "full"` for full repo archive mode. Full repo archive mode au
 2. Open the Rel.AI dashboard.
 3. Choose a workspace alias.
 4. Choose a context scope.
-5. Pick files/folders/globs unless using full repo archive mode.
-6. Choose **Readable text** or **ZIP attachment**. Full repo archive always uses ZIP.
+5. Pick files/folders/globs unless using full repo upload mode.
+6. Choose **Readable text** or **ZIP attachment**. Full repo upload always uses ZIP.
 7. Click **Create ChatGPT request**.
 
 In ZIP attachment mode, Rel.AI attaches a real `.zip` file when ChatGPT accepts the automated upload path, then inserts the task instructions into the composer. If attachment is not confirmed, Rel.AI offers a manual ZIP download/drag fallback.
@@ -55,10 +55,15 @@ If ChatGPT can see a path in the project file tree but does not have the file co
 - No `..` traversal.
 - No secret-looking paths.
 - No binary-looking source files inside readable or ZIP context.
-- No silent whole-workspace dump. Full repo archive must be explicitly selected.
+- No silent whole-workspace dump. Full repo upload must be explicitly selected.
 - Uses `git ls-files --cached --others --exclude-standard` when available, so `.gitignore` is respected for glob/directory/full-repo requests.
 - Oversized ZIP payloads are blocked before sending them to the browser.
 
 ## Recommendation
 
-Use **Focused** scope and **Readable text** for precise fixes over a few files. Use **ZIP attachment** for larger selected folders. Use **Full repo archive** only when the task genuinely needs broad project context.
+Use **Focused** scope and **Readable text** for precise fixes over a few files. Use **ZIP attachment** for larger selected folders. Use **Full repo upload** only when the task genuinely needs broad project context.
+
+
+## Plan-first mode
+
+Rel.AI can ask ChatGPT to return a `rel-ai-plan` block before generating a patch. The user approves the plan in ChatGPT, then ChatGPT returns the normal `rel-ai-apply` metadata block plus a separate unified diff. If required file contents are missing, ChatGPT should return `rel-ai-context` automatically instead of guessing.

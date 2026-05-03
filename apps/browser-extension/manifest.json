@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rel.AI",
-  "version": "0.9.32",
+  "version": "0.9.34",
   "description": "Build ChatGPT coding requests from selected local workspace context and apply returned patches through the Rel.AI bridge.",
   "permissions": [
     "activeTab",

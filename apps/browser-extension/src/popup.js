@@ -5,6 +5,7 @@ const inlineButtonsEl = document.getElementById("inlineButtons");
 const workspaceEl = document.getElementById("workspace");
 const workspaceManualEl = document.getElementById("workspaceManual");
 const taskPromptEl = document.getElementById("taskPrompt");
+const responseModeEl = document.getElementById("responseMode");
 const includePathsEl = document.getElementById("includePaths");
 const excludePathsEl = document.getElementById("excludePaths");
 const maxFilesEl = document.getElementById("maxFiles");
@@ -101,7 +102,7 @@ if (contextScopeEl) {
   });
 }
 
-for (const el of [workspaceManualEl, taskPromptEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextScopeEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl]) {
+for (const el of [workspaceManualEl, taskPromptEl, responseModeEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextScopeEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl].filter(Boolean)) {
   el.addEventListener("change", saveDraft);
   el.addEventListener("input", debounce(saveDraft, 300));
 }
@@ -191,6 +192,7 @@ async function loadWorkspaceDir(dir) {
 async function composeRequest() {
   const workspace = clean(workspaceManualEl.value || workspaceEl.value);
   const prompt = clean(taskPromptEl.value);
+  const responseMode = clean(responseModeEl && responseModeEl.value) || "apply";
   const include = lines(includePathsEl.value);
   const exclude = lines(excludePathsEl.value);
   const testCommandKey = clean(testCommandManualEl.value || testCommandKeyEl.value);
@@ -202,6 +204,7 @@ async function composeRequest() {
   dashboardLog("compose.validate.start", {
     workspace,
     promptLength: prompt.length,
+    responseMode,
     contextScope,
     includeCount: include.length,
     excludeCount: exclude.length,
@@ -245,6 +248,7 @@ async function composeRequest() {
     includeCount: include.length,
     excludeCount: exclude.length,
     fallbackEnabled: Boolean(fallbackEnabledEl.checked),
+    responseMode,
     autoSubmit: Boolean(autoSubmitEl.checked)
   });
 
@@ -252,9 +256,10 @@ async function composeRequest() {
     type: "relai.composeChatGPTRequest",
     context: contextRequest,
     task: {
-        prompt,
+      prompt,
       testCommandKey,
-      fallbackEnabled: fallbackEnabledEl.checked
+      fallbackEnabled: fallbackEnabledEl.checked,
+      responseMode
     },
     autoSubmit: autoSubmitEl.checked
   });
@@ -434,6 +439,7 @@ function summarizeDashboardState() {
     workspaceSelect: clean(workspaceEl && workspaceEl.value),
     workspaceManual: clean(workspaceManualEl && workspaceManualEl.value),
     promptLength: String(taskPromptEl && taskPromptEl.value || "").length,
+    responseMode: clean(responseModeEl && responseModeEl.value) || "apply",
     includeCount: lines(includePathsEl && includePathsEl.value || "").length,
     excludeCount: lines(excludePathsEl && excludePathsEl.value || "").length,
     contextMode: clean(contextModeEl && contextModeEl.value),
@@ -723,6 +729,7 @@ async function saveDraft() {
   const draft = {
     workspace: workspaceManualEl.value,
     prompt: taskPromptEl.value,
+    responseMode: responseModeEl ? responseModeEl.value : "apply",
     contextScope: contextScopeEl ? contextScopeEl.value : "focused",
     include: includePathsEl.value,
     exclude: excludePathsEl.value,
@@ -739,6 +746,7 @@ async function saveDraft() {
 function restoreDraft(draft) {
   workspaceManualEl.value = draft.workspace || "";
   taskPromptEl.value = draft.prompt || "";
+  if (responseModeEl) responseModeEl.value = draft.responseMode || "apply";
   if (contextScopeEl) contextScopeEl.value = draft.contextScope || "focused";
   includePathsEl.value = draft.include || "";
   excludePathsEl.value = draft.exclude || "";

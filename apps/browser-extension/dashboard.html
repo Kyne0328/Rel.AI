@@ -40,16 +40,22 @@
 
 
       <label for="taskPrompt">Task</label>
-      <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Describe the change you want. Rel.AI will attach selected context and ask ChatGPT to produce an apply block plus a unified diff that matches the current files."></textarea>
+      <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Describe the change you want. Rel.AI will attach selected context and ask ChatGPT to produce a plan or apply block that matches the current files."></textarea>
 
+      <label for="responseMode">Response mode</label>
+      <select id="responseMode">
+        <option value="apply">Apply-ready patch: ask ChatGPT for metadata, summary, and unified diff</option>
+        <option value="plan">Plan first: ask ChatGPT for a reviewable plan before any diff</option>
+      </select>
+      <p class="small-note">Plan first is safer for large or uncertain tasks. ChatGPT returns a plan, you approve it in the chat, then it generates the patch.</p>
 
       <label for="contextScope">Context scope</label>
       <select id="contextScope">
         <option value="focused">Focused (recommended): file tree + selected context + task-mentioned files</option>
         <option value="selected">Selected only: file tree + explicitly selected files/folders</option>
-        <option value="full">Full repo archive (advanced/slow): safe Git-visible workspace files</option>
+        <option value="full">Full repo upload (filtered, advanced/slow): safe repo files without dependencies/build output</option>
       </select>
-      <p class="small-note">Focused mode is fastest. Full repo archive ignores the include list, respects Git ignore rules and secret blocking, and should be used only when the task genuinely needs broad repository context.</p>
+      <p class="small-note">Focused mode is fastest. Full repo upload ignores the include list, respects Git ignore rules, removes dependency/build/cache/log/noise files, blocks secrets, and should be used only when the task genuinely needs broad repository context.</p>
 
       <label for="includePaths">Files and folders to include</label>
       <textarea id="includePaths" spellcheck="false" placeholder="src/auth.ts&#10;src/session.ts&#10;tests/**/*.test.ts"></textarea>
@@ -88,7 +94,7 @@
         <option value="readable">Readable context</option>
         <option value="zip">ZIP attachment</option>
       </select>
-      <p class="small-warning">ZIP attachment keeps the prompt short by attaching a real archive and inserting only instructions plus a manifest. Full repo archive mode always uses ZIP attachment.</p>
+      <p class="small-warning">ZIP attachment keeps the prompt short by attaching a real archive and inserting only instructions plus a manifest. Full repo upload mode always uses ZIP attachment.</p>
 
       <label for="testCommandKey">Test command key, optional</label>
       <select id="testCommandKey"></select>

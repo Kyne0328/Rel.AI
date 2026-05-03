@@ -91,6 +91,7 @@ function validateApplyRequest(value, config) {
   }
 
   optionalString(candidate.title, "Apply title must be a string when provided.");
+  const summary = optionalString(candidate.summary, "Apply summary must be a string when provided.");
   const prompt = optionalString(candidate.prompt, "Apply prompt must be a string when provided.");
   const testCommandKey = optionalString(candidate.testCommandKey, "testCommandKey must be a string when provided.");
   if (testCommandKey !== undefined && !/^[A-Za-z0-9._-]{1,64}$/.test(testCommandKey)) {
@@ -107,6 +108,7 @@ function validateApplyRequest(value, config) {
     version: APPLY_VERSION,
     workspace,
     ...(prompt ? { prompt } : {}),
+    ...(summary ? { summary: summary.slice(0, 1200) } : {}),
     diff: trimmedDiff,
     ...(testCommandKey ? { testCommandKey } : {}),
     ...(testCommand ? { testCommand } : {}),
@@ -289,6 +291,7 @@ function makeResponse(input) {
     ...(input.message ? { message: input.message } : {}),
     ...(input.error ? { error: input.error } : {}),
     ...(input.workspace ? { workspace: input.workspace } : {}),
+    ...(input.summary ? { summary: input.summary } : {}),
     ...(input.dir !== undefined ? { dir: input.dir } : {}),
     ...(input.parent !== undefined ? { parent: input.parent } : {}),
     ...(input.entries ? { entries: input.entries } : {}),

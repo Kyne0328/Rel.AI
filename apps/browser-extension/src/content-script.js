@@ -1,10 +1,12 @@
 (() => {
   const APPLY_BUTTON_CLASS = "relai-patch-button";
   const CONTEXT_BUTTON_CLASS = "relai-context-button";
+  const PLAN_BUTTON_CLASS = "relai-plan-button";
   const STATUS_CLASS = "relai-patch-status";
   const APPLY_META_FENCE_RE = /```(?:rel-ai-apply|relai-apply|rel-ai-patch)\s*[\s\S]*?```/gi;
   const DIFF_FENCE_RE = /```(?:diff|rel-ai-diff|relai-diff)\s*[\s\S]*?```/gi;
   const CONTEXT_FENCE_RE = /```(?:rel-ai-context|relai-context|rel-ai-source|relai-source)\s*[\s\S]*?```/gi;
+  const PLAN_FENCE_RE = /```(?:rel-ai-plan|relai-plan)\s*[\s\S]*?```/gi;
   function relaiContentLog(stage, details) {
     try { console.log("[Rel.AI Content]", stage, details || {}); } catch (_error) {}
   }
@@ -153,6 +155,9 @@
       if (text && looksLikeContextBlock(text)) {
         addContextButton(block, text);
       }
+      if (text && looksLikePlanBlock(text)) {
+        addPlanButton(block, text);
+      }
     }
 
     const apply = collectApplyForMessage(blocks);
@@ -171,6 +176,11 @@
 
     if (looksLikeContextBlock(text)) {
       addContextButton(block, text);
+      return;
+    }
+
+    if (looksLikePlanBlock(text)) {
+      addPlanButton(block, text);
       return;
     }
 
@@ -361,6 +371,48 @@
 
     container.append(button, status);
     placeInlineControl(block, container);
+  }
+
+  function addPlanButton(block, text) {
+    const id = `plan-${hashText(text)}`;
+    if (hasInlineButton(block, id)) {
+      return;
+    }
+
+    const container = document.createElement("div");
+    container.className = "relai-patch-inline";
+    container.dataset.relaiKind = "plan";
+    container.dataset.relaiButtonId = id;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = PLAN_BUTTON_CLASS;
+    button.textContent = "Approve plan";
+
+    const status = document.createElement("span");
+    status.className = STATUS_CLASS;
+    status.textContent = "";
+
+    button.addEventListener("click", () => {
+      const approvalText = buildPlanApprovalText(text);
+      const result = insertTextIntoComposer(approvalText, false);
+      status.textContent = result && result.ok
+        ? "Approval inserted. Review and send."
+        : (result && result.message ? result.message : "Could not insert approval.");
+    });
+
+    container.append(button, status);
+    placeInlineControl(block, container);
+  }
+
+  function buildPlanApprovalText(planText) {
+    let parsed = null;
+    try {
+      parsed = parseJsonObjectFromBlockText(planText);
+    } catch (_error) {}
+    const workspace = parsed && typeof parsed.workspace === "string" ? parsed.workspace : "the same workspace";
+    const prompt = parsed && typeof parsed.prompt === "string" ? parsed.prompt : "the approved plan";
+    return `Approved. Generate the Rel.AI apply response for this plan now.\n\nWorkspace: ${workspace}\nTask: ${prompt}\n\nUse the approved plan and the already provided context. If any required file contents are missing or uncertain, return a rel-ai-context block instead of guessing. Otherwise reply with exactly two fenced code blocks: first rel-ai-apply metadata JSON with a brief summary field, then a separate unified diff block. Do not include extra prose outside the fenced blocks.`;
   }
 
   function runtimeMessageWithTimeout(message, timeoutMs) {
@@ -633,6 +685,8 @@
       "rel-ai-apply",
       "relai-apply",
       "rel-ai-patch",
+      "rel-ai-plan",
+      "relai-plan",
       "rel-ai-diff",
       "relai-diff",
       "diff",
@@ -649,6 +703,18 @@
   function looksLikeContextBlock(text) {
     const parsed = parseJsonObjectFromBlockText(text);
     return Boolean(parsed && parsed.version === 1 && typeof parsed.workspace === "string" && Array.isArray(parsed.include));
+  }
+
+  function looksLikePlanBlock(text) {
+    const raw = String(text || "");
+    PLAN_FENCE_RE.lastIndex = 0;
+    if (PLAN_FENCE_RE.test(raw)) {
+      return true;
+    }
+    const parsed = parseJsonObjectFromBlockText(text);
+    return Boolean(parsed && parsed.version === 1 && typeof parsed.workspace === "string" && (
+      Array.isArray(parsed.plan) || Array.isArray(parsed.filesToChange) || Array.isArray(parsed.validation) || Array.isArray(parsed.risks)
+    ));
   }
 
   function looksLikeApplyMetadataObject(value) {
@@ -871,6 +937,7 @@
       addPreviewField(metaGrid, "Workspace", preview.workspace || "missing");
       addPreviewField(metaGrid, "Test command", preview.testCommandKey || preview.testCommand || "none");
       addPreviewField(metaGrid, "Fallback from patch", preview.fallbackEnabled ? "enabled" : "disabled");
+      if (preview.summary) addPreviewField(metaGrid, "Summary", preview.summary);
       addPreviewField(metaGrid, "Files", preview.files.length ? preview.files.join("\n") : "No recognizable paths found");
 
       const fallbackControl = document.createElement("label");
@@ -965,6 +1032,7 @@
       workspace: "",
       testCommandKey: "",
       testCommand: "",
+      summary: "",
       fallbackEnabled: false,
       files: [],
       diff: "",
@@ -985,6 +1053,7 @@
         result.workspace = typeof metadata.workspace === "string" ? metadata.workspace : "";
         result.testCommandKey = typeof metadata.testCommandKey === "string" ? metadata.testCommandKey : "";
         result.testCommand = typeof metadata.testCommand === "string" ? metadata.testCommand : "";
+        result.summary = typeof metadata.summary === "string" ? metadata.summary : "";
         result.fallbackEnabled = Boolean(metadata.fallback && metadata.fallback.enabled);
         if (typeof metadata.diff === "string") {
           result.diff = metadata.diff.trim();
@@ -1124,7 +1193,8 @@
         margin: 0 0 0 6px;
       }
       .relai-patch-button,
-      .relai-context-button {
+      .relai-context-button,
+      .relai-plan-button {
         border: 1px solid rgba(127,127,127,.45);
         border-radius: 8px;
         padding: 6px 10px;
@@ -1134,11 +1204,13 @@
         color: inherit;
       }
       .relai-patch-button:hover,
-      .relai-context-button:hover {
+      .relai-context-button:hover,
+      .relai-plan-button:hover {
         background: rgba(127,127,127,.16);
       }
       .relai-patch-button:disabled,
-      .relai-context-button:disabled {
+      .relai-context-button:disabled,
+      .relai-plan-button:disabled {
         opacity: .65;
         cursor: not-allowed;
       }

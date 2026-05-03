@@ -12,7 +12,8 @@ It is designed for this flow:
 You choose a workspace alias, allowed files/folders/globs, and a task
 -> Rel.AI reads only the selected local context
 -> Rel.AI inserts a complete request into the open ChatGPT web composer
--> ChatGPT returns rel-ai-apply metadata plus a separate unified diff
+-> ChatGPT either returns a reviewable rel-ai-plan or an apply-ready rel-ai-apply block plus a separate unified diff
+-> The user approves the plan or reviews the diff
 -> Rel.AI checks and applies the diff locally with git apply
 -> OpenCode can be used as a fallback if patch application or tests fail
 ```
@@ -51,10 +52,11 @@ Use this section to define the request that will be sent to ChatGPT.
 
 - **Workspace alias** chooses the local project Rel.AI may read from.
 - **Task** is the user prompt. Rel.AI no longer uses a separate title field; the task is the task.
-- **Context scope** chooses how much of the workspace Rel.AI may package. Focused is the recommended default. Full repo archive is available as an advanced/slow option.
+- **Response mode** chooses whether ChatGPT should produce an apply-ready patch immediately or first return a reviewable plan.
+- **Context scope** chooses how much of the workspace Rel.AI may package. Focused is the recommended default. Full repo upload is available as an advanced/slow option.
 - **Files and folders to include** controls what local context ChatGPT receives in Focused and Selected modes.
 - **Browse workspace** lets you add folders/files without typing paths manually.
-- **Exclude paths** removes noisy or generated files from the context, including in full repo archive mode.
+- **Exclude paths** removes noisy or generated files from the context, including in full repo upload mode.
 
 ### 3. Context packing, tests, and OpenCode
 
@@ -62,7 +64,7 @@ Use this section to define the request that will be sent to ChatGPT.
 
 - **Readable context** inserts selected files directly into the ChatGPT prompt. Use this for small, precise changes.
 - **ZIP attachment** creates a real `.zip` file and attaches it to ChatGPT, keeping the prompt shorter for larger context.
-- **Full repo archive** uses ZIP attachment automatically, respects Git ignore rules, blocks secret-looking paths, and should be reserved for tasks that genuinely require broad repository context.
+- **Full repo upload** uses ZIP attachment automatically, respects Git ignore rules, blocks secret-looking paths, and should be reserved for tasks that genuinely require broad repository context.
 - **Test command key** selects a locally allowlisted test command. ChatGPT cannot directly provide arbitrary shell commands by default.
 - **OpenCode fallback** can repair failed patches/tests when enabled.
 - **OpenCode server** starts or opens an OpenCode server for direct local interaction.
@@ -146,14 +148,16 @@ Rel.AI intentionally keeps the fallback model configured locally. ChatGPT does n
 3. Click **Refresh workspaces**.
 4. Choose or type a workspace alias, such as `myapp`.
 5. Describe the task.
-6. Choose a **Context scope**. Use Focused for normal tasks, Selected when you want strict selected-path context, or Full repo archive only for broad repository work.
-7. Add allowed files, folders, or globs manually, or use the workspace browser. Full repo archive can run without selected include paths.
-8. Choose **Readable context** for small tasks or **ZIP attachment** for larger context. Full repo archive always uses ZIP.
-9. Optionally select a `testCommandKey`.
-10. Click **Create ChatGPT request**.
-11. Review the inserted request in ChatGPT, then send it.
-12. When ChatGPT returns a `rel-ai-apply` metadata block plus a separate `diff` block, click **Apply with Rel.AI**.
-13. Review the pre-apply panel, then run **Check only** or **Apply patch**.
+6. Choose a **Response mode**. Use Apply-ready patch for small changes and Plan first for larger or uncertain work.
+7. Choose a **Context scope**. Use Focused for normal tasks, Selected when you want strict selected-path context, or Full repo upload only for broad repository work.
+8. Add allowed files, folders, or globs manually, or use the workspace browser. Full repo upload can run without selected include paths.
+9. Choose **Readable context** for small tasks or **ZIP attachment** for larger context. Full repo upload always uses ZIP.
+10. Optionally select a `testCommandKey`.
+11. Click **Create ChatGPT request**.
+12. Review the inserted request in ChatGPT, then send it.
+13. If Plan first is enabled, review the returned `rel-ai-plan` block and click **Approve plan** when it matches your intent.
+14. When ChatGPT returns a `rel-ai-apply` metadata block plus a separate `diff` block, click **Apply with Rel.AI**.
+15. Review the pre-apply panel, then run **Check only** or **Apply patch**.
 
 The dashboard has an optional **Submit to ChatGPT after inserting** checkbox. Keep it off if you want to review the final prompt before sending.
 
@@ -167,13 +171,13 @@ Rel.AI now uses a layered context strategy instead of trying to upload the whole
 2. **Task-mentioned files are auto-included when they already exist**, such as `README.md`, `package.json`, or `src/auth.ts`, even when they were outside the selected folder.
 3. **Selected folders/files stay under user control** through the include list and workspace browser. Rel.AI reads only the selected paths plus safe task-mentioned files in normal modes.
 4. **ChatGPT can ask for more context** by returning a `rel-ai-context` block when a required file is only visible in the tree or is missing from the selected contents.
-5. **Full repo archive mode exists as an advanced/slow option**. It packages safe Git-visible workspace files into a ZIP while still respecting ignored folders, exclude rules, file limits, binary detection, and secret-path blocking.
+5. **Full repo upload mode exists as an advanced/slow option**. It packages safe filtered workspace files into a ZIP while still respecting ignored folders, exclude rules, file limits, binary detection, and secret-path blocking.
 
 ### Context scope options
 
 - **Focused (recommended)**: file tree + selected context + safe task-mentioned files. Best default for most tasks.
 - **Selected only**: file tree + explicitly selected files/folders/globs + safe task-mentioned files. Use when you want tighter control.
-- **Full repo archive**: safe repository-wide ZIP attachment. Use only when a task genuinely needs broad project context. It is slower and can still omit large, binary, ignored, or secret-looking files.
+- **Full repo upload**: filtered repository-wide ZIP attachment. Use only when a task genuinely needs broad project context. It is slower and can still omit large, binary, ignored, or secret-looking files.
 
 The project file tree is an index of known workspace paths, not full file contents. If ChatGPT needs to edit a tree-only file whose contents were not included, Rel.AI instructs it to ask for more context instead of guessing.
 
@@ -181,11 +185,27 @@ Rel.AI also warns ChatGPT to treat the attached/readable context as the current 
 
 ---
 
+## Plan-first mode
+
+Plan-first mode is for larger or ambiguous changes. Instead of asking ChatGPT to produce a patch immediately, Rel.AI asks for a single `rel-ai-plan` block first. The plan should explain:
+
+- what will change
+- which files are expected to change
+- what risks or assumptions exist
+- what validation should run
+- whether additional `rel-ai-context` is needed before implementation
+
+When the plan looks correct, click **Approve plan** under the ChatGPT response. Rel.AI inserts an approval message into the composer asking ChatGPT to generate the normal `rel-ai-apply` block and unified diff. This mirrors the Plan/Build split used by local coding agents: ChatGPT plans first, then only builds after user approval.
+
+If ChatGPT lacks required file contents, it is instructed to request them automatically with `rel-ai-context` instead of guessing. The user should not need to explicitly tell ChatGPT to ask for missing files.
+
+---
+
 ## Output format
 
 Rel.AI avoids putting raw multiline diffs inside JSON strings. ChatGPT is instructed to return exactly two fenced blocks.
 
-First block: metadata only, no `diff` field and no `title` field:
+First block: metadata only, no `diff` field and no `title` field. The optional `summary` field is shown in the pre-apply preview so the user understands what changed:
 
 ````text
 ```rel-ai-apply
@@ -193,6 +213,7 @@ First block: metadata only, no `diff` field and no `title` field:
   "version": 1,
   "workspace": "myapp",
   "prompt": "Fix the auth refresh bug. Keep the public API unchanged.",
+  "summary": "Fixes refresh-token handling without changing the public API.",
   "testCommandKey": "unit",
   "fallback": {
     "enabled": true,
@@ -225,6 +246,7 @@ The browser extension combines these two blocks when you click **Apply with Rel.
 When ChatGPT returns a valid apply response, the inline **Apply with Rel.AI** button opens a confirmation panel first. It shows:
 
 - workspace alias
+- brief patch summary, when provided
 - affected files
 - configured test command key
 - whether OpenCode fallback is enabled
@@ -281,7 +303,7 @@ Rel.AI blocks:
 - common secret paths such as `.env`, `.ssh`, `.npmrc`, `*.pem`, `*.key`, and credential files
 - binary-looking files in context bundles
 - direct test commands from ChatGPT unless you explicitly enable them
-- silent full workspace reads; full repo archive mode must be explicitly selected and still applies ignore, size, binary, and secret-path filters
+- silent full workspace reads; full repo upload mode must be explicitly selected and still applies ignore, size, binary, and secret-path filters
 
 Rel.AI prefers locally configured test commands:
 
@@ -397,13 +419,28 @@ Patch request:
 
 ## Version history
 
+### v0.9.34
+
+- Adds a clearer **Full repo upload (filtered)** option for broad context tasks.
+- Full repo mode now filters dependency folders, build outputs, caches, temporary files, logs, source maps, minified artifacts, binary files, and secret-looking paths before building the ZIP.
+- Updates UI and docs to make clear that full repo upload is advanced/slow and still excludes unnecessary files.
+- Bumps package and extension versions to `0.9.34`.
+
+### v0.9.33
+
+- Adds Plan-first response mode for reviewable `rel-ai-plan` output before patch generation.
+- Adds inline **Approve plan** action that inserts an approval prompt back into ChatGPT.
+- Adds `summary` support in `rel-ai-apply` metadata and the pre-apply preview so users understand proposed changes before applying.
+- Strengthens missing-context instructions so ChatGPT should request `rel-ai-context` automatically when file contents are unavailable.
+- Bumps package and extension versions to `0.9.33`.
+
 ### v0.9.32
 
-- Adds context scope selection: Focused, Selected only, and advanced Full repo archive.
+- Adds context scope selection: Focused, Selected only, and advanced Full repo upload.
 - Keeps compact project file tree included by default for exact path casing.
 - Keeps task-mentioned files auto-included when they exist in the workspace.
 - Allows ChatGPT to request follow-up files with `rel-ai-context` instead of guessing.
-- Adds advanced full repo archive mode with Git-ignore, secret-path, binary, size, and file-count safeguards.
+- Adds advanced full repo upload mode with Git-ignore, dependency/build/cache/log filtering, secret-path, binary, size, and file-count safeguards.
 - Bumps package and extension versions to `0.9.32`.
 
 ### v0.9.31
