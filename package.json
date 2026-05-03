@@ -1,0 +1,25 @@
+{
+  "name": "rel-ai-chatgpt-request-bridge",
+  "private": true,
+  "version": "0.9.19",
+  "description": "Rel.AI bridge with fresh native-host name, diagnostics, ZIP context, ChatGPT request dashboard, git apply, and OpenCode fallback.",
+  "license": "MIT",
+  "scripts": {
+    "check": "node --check apps/native-host/src/index.js && node --check apps/native-host/src/nativeMessaging.js && node --check apps/native-host/src/config.js && node --check apps/native-host/src/patchApply.js && node --check apps/native-host/src/contextBundle.js && node --check apps/native-host/src/workspaceList.js && node --check apps/native-host/src/opencode.js && node --check apps/native-host/src/protocol.js && node --check apps/native-host/scripts/install-native-host.js && node --check apps/native-host/scripts/relai-config.js && node --check apps/native-host/scripts/test-native-message.js && node --check apps/browser-extension/src/background.js && node --check apps/browser-extension/src/content-script.js && node --check apps/browser-extension/src/popup.js && node --check apps/browser-extension/src/protocol.js && node --check apps/native-host/scripts/diagnose-native-host.js && node --check apps/native-host/scripts/probe-native-host.js",
+    "install:chrome-host": "node apps/native-host/scripts/install-native-host.js --browser chrome",
+    "install:edge-host": "node apps/native-host/scripts/install-native-host.js --browser edge",
+    "workspace:add": "node apps/native-host/scripts/relai-config.js workspace add",
+    "workspace:list": "node apps/native-host/scripts/relai-config.js workspace list",
+    "testcmd:add": "node apps/native-host/scripts/relai-config.js test-command add",
+    "model:set": "node apps/native-host/scripts/relai-config.js set opencode-model",
+    "config:show": "node apps/native-host/scripts/relai-config.js show",
+    "test:native": "node apps/native-host/scripts/test-native-message.js",
+    "diagnose:chrome-host": "node apps/native-host/scripts/diagnose-native-host.js --browser chrome",
+    "diagnose:edge-host": "node apps/native-host/scripts/diagnose-native-host.js --browser edge",
+    "probe:chrome-host": "node apps/native-host/scripts/probe-native-host.js --browser chrome",
+    "probe:edge-host": "node apps/native-host/scripts/probe-native-host.js --browser edge"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

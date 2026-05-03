@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Rel.AI ChatGPT Request Bridge",
+  "version": "0.9.15",
+  "description": "Build ChatGPT requests with readable context or a real uploaded ZIP file, preview diffs, then apply with git and OpenCode fallback controls.",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "debugger",
+    "nativeMessaging",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "src/content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Open Rel.AI"
+  }
+}

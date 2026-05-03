@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rel.AI</title>
+  <link rel="stylesheet" href="src/popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Rel.AI</h1>
+      <p>Build ChatGPT code requests from allowlisted local workspace context.</p>
+    </header>
+
+    <section class="status-row">
+      <button id="ping">Check bridge</button>
+      <button id="loadConfig">Load workspaces</button>
+      <span id="status">Not checked</span>
+    </section>
+
+    <section class="composer-card">
+      <h2>Make a ChatGPT code request</h2>
+
+      <label for="workspace">Workspace alias</label>
+      <select id="workspace"></select>
+      <input id="workspaceManual" type="text" placeholder="or type alias, e.g. myapp">
+
+      <label for="taskTitle">Title</label>
+      <input id="taskTitle" type="text" placeholder="Fix auth refresh bug">
+
+      <label for="taskPrompt">What do you want ChatGPT to do?</label>
+      <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Explain the bug or feature. Rel.AI will attach selected workspace files and instructions for ChatGPT to return metadata + a separate unified diff block."></textarea>
+
+
+      <label for="includePaths">Allowed files / folders / globs</label>
+      <textarea id="includePaths" spellcheck="false" placeholder="src/auth.ts&#10;src/session.ts&#10;tests/**/*.test.ts"></textarea>
+
+      <section class="workspace-picker">
+        <div class="picker-title-row">
+          <strong>Workspace picker</strong>
+          <button id="browseWorkspace" type="button">Browse</button>
+        </div>
+        <div class="picker-controls">
+          <button id="pickerUp" type="button">Up</button>
+          <button id="pickerRefresh" type="button">Refresh</button>
+          <span id="pickerPath">/</span>
+        </div>
+        <div id="pickerList" class="picker-list" aria-live="polite">
+          Pick a workspace and click Browse.
+        </div>
+      </section>
+
+      <label for="excludePaths">Exclude paths, optional</label>
+      <textarea id="excludePaths" spellcheck="false" placeholder="**/*.snap&#10;dist/"></textarea>
+
+      <div class="grid-2">
+        <label>
+          Max files
+          <input id="maxFiles" type="number" min="1" max="50" value="15">
+        </label>
+        <label>
+          Max chars
+          <input id="maxChars" type="number" min="1000" step="1000" value="90000">
+        </label>
+      </div>
+
+      <label for="testCommandKey">Test command key, optional</label>
+      <select id="testCommandKey"></select>
+      <input id="testCommandManual" type="text" placeholder="or type key, e.g. unit">
+
+      <label class="checkbox">
+        <input id="fallbackEnabled" type="checkbox">
+        Enable OpenCode fallback if patch or tests fail
+      </label>
+
+      <label class="checkbox warning-checkbox">
+        <input id="autoSubmit" type="checkbox">
+        Submit to ChatGPT after inserting, experimental
+      </label>
+
+      <button id="composeRequest" class="primary">Insert request into ChatGPT</button>
+    </section>
+
+    <section>
+      <label class="checkbox">
+        <input id="inlineButtons" type="checkbox">
+        Show inline Rel.AI buttons on ChatGPT responses
+      </label>
+    </section>
+
+    <section class="actions">
+      <button id="contextLatest">Insert latest context request</button>
+      <button id="contextSelected">Insert context from selected text</button>
+      <button id="sendLatest">Apply latest patch block</button>
+      <button id="sendSelected">Apply selected patch text</button>
+      <button id="scan">Rescan page</button>
+    </section>
+
+    <details>
+      <summary>Manual blocks</summary>
+      <section>
+        <label for="contextManual">Manual rel-ai-context block</label>
+        <textarea id="contextManual" spellcheck="false" placeholder="Paste a ```rel-ai-context block here"></textarea>
+        <button id="sendContextManual">Insert manual context</button>
+      </section>
+
+      <section>
+        <label for="manual">Manual rel-ai-apply block</label>
+        <textarea id="manual" spellcheck="false" placeholder="Paste metadata + diff blocks, raw JSON, or unified diff here"></textarea>
+        <button id="sendManual">Apply manual patch</button>
+      </section>
+    </details>
+
+    <section class="hint">
+      <p>The extension reads only the workspace alias and paths you choose, inserts them into the open ChatGPT tab, and asks ChatGPT to return a patch Rel.AI can apply.</p>
+    </section>
+  </main>
+  <script src="src/popup.js"></script>
+</body>
+</html>
