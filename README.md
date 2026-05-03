@@ -461,6 +461,15 @@ Patch request:
 
 ## Version history
 
+### 0.9.46
+
+- Improves popup UI: adds CSS custom properties for consistent theming, groups action buttons into labeled **Context** and **Apply patch** sections, adds status indicator color states (green/red), improves button hierarchy with a bolder primary action, adds focus rings on inputs, and refines section spacing.
+- Improves the pre-apply patch preview dialog: panel now uses a sticky header and footer so the title and action buttons stay visible while the diff is scrolled; diff is syntax-highlighted with green backgrounds for added lines, red for removed lines, blue-italic for hunk headers, and bold for file headers; the **Apply patch** button is now green and visually distinct from **Cancel** and **Check only**; the fallback toggle has a bordered card style; the warning note is an amber callout box instead of plain text; the overlay adds a blur backdrop.
+- Adds `relai-preview-body` and `relai-preview-footer` layout wrappers to the patch preview panel for the sticky layout.
+- Adds `relai-diff-add`, `relai-diff-remove`, `relai-diff-hunk`, and `relai-diff-header` CSS classes for diff syntax coloring.
+- Adds `.relai-preview-toggle` CSS class for the fallback checkbox label.
+- Updates `setStatus` in `popup.js` to set `className` (`ok`/`err`) instead of an inline `style.color` so status color is driven by CSS variables.
+
 ### 0.9.45
 
 - Fixes follow-up context ZIP upload failing silently: raises the inline base64 size limit from 250 KB to 32 MB so virtually all follow-up ZIPs include a base64 payload and upload automatically instead of being dropped.

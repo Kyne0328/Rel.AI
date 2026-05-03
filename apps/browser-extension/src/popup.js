@@ -783,7 +783,7 @@ function base64ToBlob(base64, mimeType) {
 
 function setStatus(text, isError) {
   statusEl.textContent = text;
-  statusEl.style.color = isError ? "#a40000" : "#176b2c";
+  statusEl.className = isError ? "err" : "ok";
   statusEl.setAttribute("role", isError ? "alert" : "status");
   statusEl.setAttribute("aria-live", isError ? "assertive" : "polite");
 }

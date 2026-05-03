@@ -1050,7 +1050,19 @@
       diffTitle.textContent = "Unified diff";
       const diffBox = document.createElement("pre");
       diffBox.className = "relai-preview-diff";
-      diffBox.textContent = preview.diff || "No diff detected.";
+      if (!preview.diff) {
+        diffBox.textContent = "No diff detected.";
+      } else {
+        for (const line of preview.diff.split('\n')) {
+          const s = document.createElement('span');
+          s.textContent = line + '\n';
+          if (/^\+\+\+/.test(line) || /^---/.test(line)) s.className = 'relai-diff-header';
+          else if (line.startsWith('+')) s.className = 'relai-diff-add';
+          else if (line.startsWith('-')) s.className = 'relai-diff-remove';
+          else if (line.startsWith('@@')) s.className = 'relai-diff-hunk';
+          diffBox.appendChild(s);
+        }
+      }
 
       const errorBox = document.createElement("div");
       errorBox.className = "relai-preview-error";
@@ -1078,7 +1090,13 @@
       }
 
       actions.append(cancel, dryRun, apply);
-      panel.append(header, metaGrid, fallbackControl, warning, diffTitle, diffBox, errorBox, actions);
+      const body = document.createElement("div");
+      body.className = "relai-preview-body";
+      body.append(metaGrid, fallbackControl, warning, diffTitle, diffBox);
+      const footer = document.createElement("div");
+      footer.className = "relai-preview-footer";
+      footer.append(errorBox, actions);
+      panel.append(header, body, footer);
       overlay.append(panel);
       document.body.appendChild(overlay);
 
@@ -1334,50 +1352,85 @@
         align-items: center;
         justify-content: center;
         padding: 24px;
-        background: rgba(0,0,0,.45);
+        background: rgba(0,0,0,.5);
+        backdrop-filter: blur(2px);
       }
       .relai-preview-panel {
         box-sizing: border-box;
         width: min(980px, 96vw);
         max-height: 92vh;
-        overflow: auto;
-        border: 1px solid rgba(127,127,127,.35);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(127,127,127,.3);
         border-radius: 14px;
-        padding: 16px;
+        padding: 18px;
         background: Canvas;
         color: CanvasText;
-        box-shadow: 0 20px 70px rgba(0,0,0,.35);
+        box-shadow: 0 24px 80px rgba(0,0,0,.4);
       }
       .relai-preview-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: 12px;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
+        flex-shrink: 0;
       }
-      .relai-preview-header h2,
-      .relai-preview-panel h3 {
+      .relai-preview-header h2 {
         margin: 0;
         font-size: 16px;
+      }
+      .relai-preview-panel h3 {
+        margin: 12px 0 6px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        opacity: .55;
       }
       .relai-preview-close {
         border: 0;
         background: transparent;
         color: inherit;
-        font-size: 24px;
+        font-size: 20px;
         cursor: pointer;
+        opacity: .55;
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+      .relai-preview-close:hover {
+        opacity: 1;
+        background: rgba(127,127,127,.12);
+      }
+      .relai-preview-body {
+        flex: 1;
+        overflow: auto;
+        padding-right: 4px;
+      }
+      .relai-preview-footer {
+        flex-shrink: 0;
+        border-top: 1px solid rgba(127,127,127,.18);
+        padding-top: 12px;
+        margin-top: 12px;
       }
       .relai-preview-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 8px;
-        margin: 10px 0;
+        margin: 4px 0 12px;
       }
       .relai-preview-field {
-        border: 1px solid rgba(127,127,127,.28);
+        border: 1px solid rgba(127,127,127,.22);
         border-radius: 8px;
-        padding: 8px;
-        background: rgba(127,127,127,.06);
+        padding: 8px 10px;
+        background: rgba(127,127,127,.05);
       }
       .relai-preview-field strong,
       .relai-preview-field span {
@@ -1386,55 +1439,103 @@
         overflow-wrap: anywhere;
       }
       .relai-preview-field strong {
-        font-size: 11px;
-        opacity: .7;
-        margin-bottom: 4px;
+        font-size: 10px;
+        opacity: .55;
+        margin-bottom: 3px;
         text-transform: uppercase;
-        letter-spacing: .04em;
+        letter-spacing: .06em;
+      }
+      .relai-preview-field span {
+        font-size: 13px;
+      }
+      .relai-preview-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        cursor: pointer;
+        margin: 8px 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(127,127,127,.05);
+        border: 1px solid rgba(127,127,127,.18);
+        user-select: none;
       }
       .relai-preview-warning {
         margin: 10px 0;
-        font-size: 13px;
-        opacity: .85;
+        font-size: 12px;
+        line-height: 1.45;
+        padding: 10px 12px;
+        background: rgba(245, 158, 11, .08);
+        border: 1px solid rgba(245, 158, 11, .35);
+        border-radius: 8px;
       }
       .relai-preview-diff {
-        max-height: 46vh;
+        max-height: 40vh;
         overflow: auto;
         padding: 12px;
         border-radius: 10px;
-        border: 1px solid rgba(127,127,127,.35);
-        background: rgba(127,127,127,.08);
+        border: 1px solid rgba(127,127,127,.25);
+        background: rgba(0,0,0,.03);
         font-size: 12px;
-        line-height: 1.35;
+        line-height: 1.45;
         white-space: pre;
+        tab-size: 2;
+      }
+      .relai-diff-add {
+        display: block;
+        background: rgba(22, 163, 74, .14);
+      }
+      .relai-diff-remove {
+        display: block;
+        background: rgba(220, 38, 38, .12);
+      }
+      .relai-diff-hunk {
+        display: block;
+        color: #60a5fa;
+        font-style: italic;
+      }
+      .relai-diff-header {
+        display: block;
+        font-weight: 700;
+        opacity: .65;
       }
       .relai-preview-error {
         color: #b00020;
         font-size: 13px;
-        margin-top: 8px;
+        margin-bottom: 8px;
       }
       .relai-preview-actions {
         display: flex;
         justify-content: flex-end;
         gap: 8px;
-        margin-top: 14px;
       }
       .relai-preview-actions button {
-        border: 1px solid rgba(127,127,127,.45);
+        border: 1px solid rgba(127,127,127,.4);
         border-radius: 8px;
-        padding: 8px 12px;
+        padding: 8px 16px;
         background: rgba(127,127,127,.08);
         color: inherit;
         cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .relai-preview-actions button:hover {
+        background: rgba(127,127,127,.15);
       }
       .relai-preview-actions button:disabled {
-        opacity: .55;
+        opacity: .4;
         cursor: not-allowed;
       }
       .relai-preview-apply {
-        font-weight: 700;
+        background: #16a34a !important;
+        border-color: #15803d !important;
+        color: #fff !important;
+        font-weight: 700 !important;
       }
-
+      .relai-preview-apply:hover:not(:disabled) {
+        background: #15803d !important;
+      }
     `;
     document.documentElement.appendChild(style);
   }

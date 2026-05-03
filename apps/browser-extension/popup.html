@@ -88,22 +88,28 @@
     </section>
 
     <section class="actions">
-      <button id="contextLatest"
-        title="Find the latest rel-ai-context request in the open ChatGPT tab, read the workspace files it asked for, and insert them into the ChatGPT composer.">
-        Provide latest context request
-      </button>
-      <button id="contextSelected"
-        title="Use your current ChatGPT page selection as a rel-ai-context request, then insert the requested workspace files into the composer.">
-        Provide context from selection
-      </button>
-      <button id="sendLatest"
-        title="Find the latest rel-ai-apply + diff blocks in the open ChatGPT tab and run git apply in your workspace. Shows a preview first.">
-        Apply latest patch block
-      </button>
-      <button id="sendSelected"
-        title="Use your current ChatGPT page selection as a patch and run git apply. Shows a preview first.">
-        Apply selected patch text
-      </button>
+      <div class="actions-group">
+        <span class="actions-group-label">Context</span>
+        <button id="contextLatest"
+          title="Find the latest rel-ai-context request in the open ChatGPT tab, read the workspace files it asked for, and insert them into the ChatGPT composer.">
+          Provide latest context request
+        </button>
+        <button id="contextSelected"
+          title="Use your current ChatGPT page selection as a rel-ai-context request, then insert the requested workspace files into the composer.">
+          Provide context from selection
+        </button>
+      </div>
+      <div class="actions-group">
+        <span class="actions-group-label">Apply patch</span>
+        <button id="sendLatest"
+          title="Find the latest rel-ai-apply + diff blocks in the open ChatGPT tab and run git apply in your workspace. Shows a preview first.">
+          Apply latest patch block
+        </button>
+        <button id="sendSelected"
+          title="Use your current ChatGPT page selection as a patch and run git apply. Shows a preview first.">
+          Apply selected patch text
+        </button>
+      </div>
       <button id="scan"
         title="Force Rel.AI to re-scan the ChatGPT page and add inline Apply and context buttons to any new responses.">
         Rescan page for Rel.AI blocks
