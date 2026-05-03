@@ -23,11 +23,7 @@ const archiveFallbackEl = document.getElementById("archiveFallback");
 const archiveFallbackTextEl = document.getElementById("archiveFallbackText");
 const archivePathTextEl = document.getElementById("archivePathText");
 const downloadArchiveEl = document.getElementById("downloadArchive");
-const showArchiveChipEl = document.getElementById("showArchiveChip");
 const copyArchivePathEl = document.getElementById("copyArchivePath");
-const dashboardArchiveChipEl = document.getElementById("dashboardArchiveChip");
-const dashboardArchiveNameEl = document.getElementById("dashboardArchiveName");
-const dashboardArchiveMetaEl = document.getElementById("dashboardArchiveMeta");
 const debugLogEl = document.getElementById("debugLog");
 const debugCardEl = document.getElementById("debugCard");
 const opencodeServerInfoEl = document.getElementById("opencodeServerInfo");
@@ -51,7 +47,6 @@ bind("sendContextManual", () => sendMessage({ type: "relai.contextManual", text:
 bind("browseWorkspace", () => loadWorkspaceDir(""));
 bind("pickerRefresh", () => loadWorkspaceDir(pickerDir));
 bind("pickerUp", () => loadWorkspaceDir(parentDir(pickerDir)));
-bind("showArchiveChip", () => showLastArchiveChip());
 bind("downloadArchive", () => downloadLastArchive());
 bind("copyArchivePath", () => copyLastArchivePath());
 bind("copyDebugLog", () => copyDebugLog());
@@ -60,15 +55,6 @@ bind("opencodeServerStart", () => opencodeServerStart());
 bind("opencodeServerStatus", () => opencodeServerStatus());
 bind("opencodeServerOpen", () => opencodeServerOpen());
 
-if (dashboardArchiveChipEl) {
-  dashboardArchiveChipEl.addEventListener("dragstart", setDashboardArchiveDragPayload);
-  dashboardArchiveChipEl.addEventListener("keydown", (event) => {
-    if ((event.key === "Enter" || event.key === " ") && lastArchive) {
-      event.preventDefault();
-      downloadLastArchive().catch((error) => setStatus(error.message || String(error), true));
-    }
-  });
-}
 
 document.addEventListener("keydown", (event) => {
   if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "d") {
@@ -550,8 +536,7 @@ function renderResponse(response) {
   if (response.type === "relai.chatgptRequest") {
     const mode = response.contextMode === "zip" ? "ZIP attachment" : "readable context";
     const size = response.contextMode === "zip" && response.zipBytes ? `, zip ${response.zipBytes} bytes` : "";
-    const chip = response.contextMode === "zip" && response.dragChipShown ? ", draggable ZIP chip shown in ChatGPT tab" : "";
-    const upload = response.contextMode === "zip" ? (response.archiveUploaded ? `, uploaded ${response.archiveName || "rel-ai-context.zip"}` : `, ZIP attachment not confirmed${chip}${response.uploadError ? `: ${response.uploadError}` : ""}`) : "";
+    const upload = response.contextMode === "zip" ? (response.archiveUploaded ? `, uploaded ${response.archiveName || "rel-ai-context.zip"}` : `, ZIP attachment not confirmed${response.uploadError ? `: ${response.uploadError}` : ""}`) : "";
 
     if (response.contextMode === "zip" && !response.archiveUploaded && response.archiveBase64) {
       showArchiveFallback(response);
@@ -618,25 +603,19 @@ function showArchiveFallback(response) {
     base64: response.archiveBase64 || "",
     path: response.archivePath || "",
     zipBytes: response.zipBytes || 0,
-    fileCount: response.fileCount || 0,
-    dragChipShown: Boolean(response.dragChipShown),
-    dragChipMessage: response.dragChipMessage || ""
+    fileCount: response.fileCount || 0
   };
 
-  if (!archiveFallbackEl) {
-    return;
+  if (archiveFallbackEl) {
+    archiveFallbackEl.classList.remove("hidden");
   }
-
-  archiveFallbackEl.classList.remove("hidden");
   if (archiveFallbackTextEl) {
-    archiveFallbackTextEl.textContent = lastArchive.dragChipShown
-      ? `Automatic upload was not confirmed, so Rel.AI placed a draggable ZIP chip in the ChatGPT tab. Drag that chip into the composer, wait for ChatGPT to show ${lastArchive.name}, then send the inserted prompt.`
-      : `Automatic upload was not confirmed. Click "Show draggable ZIP in ChatGPT tab", then drag the chip into the composer. If that fails, download ${lastArchive.name} and drag the downloaded file into ChatGPT.`;
+    archiveFallbackTextEl.textContent = `Automatic attachment was not confirmed. Download ${lastArchive.name}, drag it into the open ChatGPT tab, wait for the attachment, then send the inserted prompt.`;
   }
   if (archivePathTextEl) {
-    archivePathTextEl.textContent = lastArchive.path ? `Temp path: ${lastArchive.path}` : "Temp path unavailable; use Download generated ZIP.";
+    archivePathTextEl.textContent = lastArchive.path ? `Temp path: ${lastArchive.path}` : "Temp path unavailable; use Download ZIP.";
   }
-  renderDashboardArchiveChip();
+  setStatus(`ZIP attachment was not confirmed. Download ${lastArchive.name} and drag it into the open ChatGPT tab, then send the inserted prompt.`, true);
 }
 
 function hideArchiveFallback() {
@@ -647,38 +626,6 @@ function hideArchiveFallback() {
   if (archivePathTextEl) {
     archivePathTextEl.textContent = "";
   }
-  if (dashboardArchiveChipEl) {
-    dashboardArchiveChipEl.classList.add("hidden");
-  }
-}
-
-function renderDashboardArchiveChip() {
-  if (!dashboardArchiveChipEl || !lastArchive || !lastArchive.base64) {
-    if (dashboardArchiveChipEl) dashboardArchiveChipEl.classList.add("hidden");
-    return;
-  }
-  dashboardArchiveChipEl.classList.remove("hidden");
-  if (dashboardArchiveNameEl) {
-    dashboardArchiveNameEl.textContent = lastArchive.name || "rel-ai-context.zip";
-  }
-  if (dashboardArchiveMetaEl) {
-    const size = lastArchive.zipBytes ? formatBytes(lastArchive.zipBytes) : "unknown size";
-    dashboardArchiveMetaEl.textContent = `${size} • drag this card into the ChatGPT composer if the in-page chip does not appear.`;
-  }
-}
-
-function setDashboardArchiveDragPayload(event) {
-  if (!lastArchive || !lastArchive.base64 || !event.dataTransfer) {
-    return;
-  }
-  const file = new File([base64ToBlob(lastArchive.base64, "application/zip")], lastArchive.name || "rel-ai-context.zip", {
-    type: "application/zip",
-    lastModified: Date.now()
-  });
-  event.dataTransfer.effectAllowed = "copy";
-  try { event.dataTransfer.items.add(file); } catch (_error) {}
-  try { event.dataTransfer.setData("text/plain", file.name); } catch (_error) {}
-  try { event.dataTransfer.setData("DownloadURL", `application/zip:${file.name}:data:application/zip;base64,${lastArchive.base64}`); } catch (_error) {}
 }
 
 function formatBytes(bytes) {
@@ -687,34 +634,6 @@ function formatBytes(bytes) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-async function showLastArchiveChip() {
-  if (!lastArchive || !lastArchive.base64) {
-    throw new Error("No generated ZIP is available. Build the request again in ZIP mode.");
-  }
-
-  const response = await sendMessage({
-    type: "relai.showArchiveChip",
-    files: [{
-      name: lastArchive.name || "rel-ai-context.zip",
-      mimeType: "application/zip",
-      base64: lastArchive.base64,
-      path: lastArchive.path || ""
-    }]
-  });
-
-  if (!response || !response.ok) {
-    throw new Error(response && response.error ? response.error : "Could not show ZIP chip in ChatGPT tab.");
-  }
-
-  lastArchive.dragChipShown = true;
-  lastArchive.dragChipMessage = response.message || "Draggable ZIP chip shown in ChatGPT tab.";
-  renderDashboardArchiveChip();
-  if (archiveFallbackTextEl) {
-    archiveFallbackTextEl.textContent = `Rel.AI placed a draggable ZIP chip in the ChatGPT tab. Drag it into the composer, wait for ChatGPT to show ${lastArchive.name}, then send the inserted prompt.`;
-  }
-  setStatus(response.message || "Draggable ZIP chip shown in ChatGPT tab.");
 }
 
 async function downloadLastArchive() {

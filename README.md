@@ -19,6 +19,14 @@ You choose a workspace alias, allowed files/folders/globs, and a task
 
 ChatGPT cannot silently browse your disk. Rel.AI reads local files through the native host only after you choose the workspace alias and allowed paths in the dashboard.
 
+## Why I made this
+
+Rel.AI was created to make the ChatGPT web experience usable for real local coding work. The original problem was simple: Codex-style workflows were either unavailable or too expensive to rely on, while the models available through OpenCode were not strong enough for the heavier reasoning tasks I wanted to solve.
+
+I had access to ChatGPT 5.5 Thinking on the web, and I wanted to use that reasoning capability to plan fixes, solve bugs, and produce code changes without manually copying patches back and forth into local files. Rel.AI bridges that gap: ChatGPT does the heavy reasoning, while local tools apply and verify changes safely.
+
+OpenCode still matters in this design, but it is not the main thinker. Rel.AI uses OpenCode as an optional local fallback when a patch or test run fails, while Git remains the deterministic path for applying clean diffs.
+
 ---
 
 ## Dashboard
@@ -326,7 +334,7 @@ If Chrome shows `Extension context invalidated`, refresh the ChatGPT tab after r
 
 ### ZIP upload fails
 
-ZIP upload uses the page-context drag/drop path first. If ChatGPT does not confirm the attachment, Rel.AI can show a draggable ZIP card or fall back to manual drag/drop.
+ZIP upload uses the page-context drag/drop path first. If ChatGPT does not confirm the attachment, download the generated ZIP from Rel.AI and drag it into the open ChatGPT tab manually. The previous draggable ZIP-card fallback was removed because it was not reliable across ChatGPT page states.
 
 ---
 
@@ -378,6 +386,13 @@ Patch request:
 ---
 
 ## Version history
+
+### v0.9.31
+
+- Adds a professional **Why I made this** section explaining the ChatGPT 5.5 Thinking, Codex cost/access, and OpenCode fallback motivation.
+- Removes the unreliable draggable ZIP-card fallback from the dashboard and upload flow.
+- Keeps manual ZIP download/drag as the reliable fallback when automatic ChatGPT upload is not confirmed.
+- Bumps package and extension versions to `0.9.31`.
 
 ### v0.9.30
 

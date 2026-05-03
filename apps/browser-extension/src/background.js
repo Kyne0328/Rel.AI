@@ -281,15 +281,6 @@ async function handleMessage(message, sender) {
     return composeChatGPTRequest(message.context, message.task || {}, Boolean(message.autoSubmit), tab.id);
   }
 
-  if (message.type === "relai.showArchiveChip") {
-    const tab = await getTargetChatGPTTab();
-    if (!tab || typeof tab.id !== "number") {
-      throw new Error("Open a ChatGPT tab before showing the ZIP drag chip.");
-    }
-    const files = Array.isArray(message.files) ? message.files : [];
-    return showArchiveDragChipInTab(tab.id, files);
-  }
-
   if (message.type === "relai.getSettings") {
     return { ok: true, settings: await getSettings() };
   }
@@ -390,8 +381,6 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
     archiveUploaded: Boolean(inserted && inserted.uploaded),
     uploadMethod: inserted && inserted.uploadMethod,
     uploadError: inserted && inserted.uploadError,
-    dragChipShown: Boolean(inserted && inserted.dragChipShown),
-    dragChipMessage: inserted && inserted.dragChipMessage,
     files: response.files || [],
     skipped: response.skipped || [],
     taskMentionedFiles: response.taskMentionedFiles || null,
@@ -865,267 +854,6 @@ function sleepBackground(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function showArchiveDragChipInTab(tabId, files) {
-  const safeFiles = Array.isArray(files) ? files.filter((file) => file && file.base64 && file.name) : [];
-  if (safeFiles.length === 0) {
-    return { ok: false, error: "No generated ZIP bytes are available for the drag chip." };
-  }
-
-  const errors = [];
-  await focusTab(tabId).catch((error) => errors.push(`focus: ${error instanceof Error ? error.message : String(error)}`));
-
-  // Prefer the persistent content script, but do not trust it as the only path. Tabs
-  // opened before an extension reload often keep stale scripts that reject messages.
-  try {
-    const result = await chrome.tabs.sendMessage(tabId, { type: "relai.showArchiveChip", files: safeFiles });
-    relaiLog("showArchiveDragChipInTab.contentMessage.result", result);
-    if (result && result.ok) {
-      await focusTab(tabId).catch(() => {});
-      return { ...result, message: `${result.message || "Draggable ZIP chip shown."} Switched to the ChatGPT tab.` };
-    }
-    errors.push(`content-script: ${(result && (result.error || result.message)) || "returned not ok"}`);
-  } catch (error) {
-    errors.push(`content-script: ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  // Try both worlds. MAIN can be required for page layout quirks; ISOLATED is safer
-  // when page CSP or app internals interfere. Do not stop on the first failure.
-  const attempts = [
-    { world: "MAIN", label: "main-world" },
-    { world: "ISOLATED", label: "isolated-world" }
-  ];
-
-  for (const attempt of attempts) {
-    try {
-      const details = {
-        target: { tabId },
-        func: showRelAiArchiveDragChipInPage,
-        args: [safeFiles]
-      };
-      if (attempt.world) {
-        details.world = attempt.world;
-      }
-      relaiLog("scripting.chip.execute", { tabId, world: attempt.world, filesPassed: safeFiles.length });
-      const results = await chrome.scripting.executeScript(details);
-      const result = results && results[0] && results[0].result
-        ? results[0].result
-        : { ok: false, error: "ZIP drag chip script returned no result." };
-      result.executionWorld = attempt.label;
-      if (result.ok) {
-        await focusTab(tabId).catch(() => {});
-        result.message = `${result.message || "Draggable ZIP chip shown."} Switched to the ChatGPT tab.`;
-        return result;
-      }
-      errors.push(`${attempt.label}: ${result.error || result.message || "not ok"}`);
-    } catch (error) {
-      errors.push(`${attempt.label}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  return { ok: false, error: `Could not render ZIP chip in ChatGPT. ${errors.join(" | ")}` };
-}
-
-function showRelAiArchiveDragChipInPage(files) {
-  function decodeBase64(base64) {
-    const clean = String(base64 || "").replace(/\s+/g, "");
-    const binary = atob(clean);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
-  }
-
-  function makeFile(item) {
-    const bytes = decodeBase64(item.base64);
-    return new File([bytes], item.name || "rel-ai-context.zip", {
-      type: item.mimeType || "application/zip",
-      lastModified: Date.now()
-    });
-  }
-
-  function formatBytes(bytes) {
-    const value = Number(bytes || 0);
-    if (!Number.isFinite(value) || value <= 0) return "unknown size";
-    if (value < 1024) return `${value} B`;
-    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-    return `${(value / (1024 * 1024)).toFixed(2)} MB`;
-  }
-
-  function removeExisting() {
-    for (const node of document.querySelectorAll('[data-relai-archive-chip="true"]')) {
-      node.remove();
-    }
-  }
-
-  function addStyles() {
-    if (document.getElementById("relai-archive-chip-style")) return;
-    const style = document.createElement("style");
-    style.id = "relai-archive-chip-style";
-    style.textContent = `
-      [data-relai-archive-chip="true"] {
-        position: fixed;
-        right: 18px;
-        bottom: 96px;
-        z-index: 2147483647;
-        width: min(360px, calc(100vw - 36px));
-        box-sizing: border-box;
-        border: 1px solid rgba(120, 120, 120, .35);
-        border-radius: 14px;
-        background: color-mix(in srgb, Canvas 94%, #ffffff 6%);
-        color: CanvasText;
-        box-shadow: 0 10px 32px rgba(0,0,0,.18);
-        padding: 12px;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        font-size: 13px;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-bottom: 8px;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-title {
-        font-weight: 750;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-close {
-        border: 0;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        font-size: 18px;
-        line-height: 1;
-        padding: 0 3px;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-file {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-        border: 1px dashed rgba(130,130,130,.65);
-        border-radius: 12px;
-        background: rgba(127,127,127,.08);
-        color: inherit;
-        cursor: grab;
-        padding: 10px;
-        text-align: left;
-        box-sizing: border-box;
-        user-select: none;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-file:active { cursor: grabbing; }
-      [data-relai-archive-chip="true"] .relai-chip-icon {
-        width: 34px;
-        height: 34px;
-        border-radius: 9px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(88, 101, 242, .16);
-        flex: 0 0 auto;
-        font-size: 20px;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-name {
-        font-weight: 650;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-meta,
-      [data-relai-archive-chip="true"] .relai-chip-help {
-        color: color-mix(in srgb, CanvasText 68%, transparent);
-        font-size: 12px;
-      }
-      [data-relai-archive-chip="true"] .relai-chip-help {
-        margin-top: 8px;
-        line-height: 1.35;
-      }
-      [data-relai-archive-chip="true"].relai-chip-dragging .relai-chip-file {
-        outline: 2px solid rgba(88, 101, 242, .75);
-        background: rgba(88, 101, 242, .12);
-      }
-    `;
-    document.documentElement.appendChild(style);
-  }
-
-  try {
-    const items = Array.isArray(files) ? files.filter((item) => item && item.base64) : [];
-    if (items.length === 0) {
-      return { ok: false, error: "No ZIP data was provided for the drag chip." };
-    }
-    const item = items[0];
-    const file = makeFile(item);
-
-    removeExisting();
-    addStyles();
-
-    const panel = document.createElement("div");
-    panel.setAttribute("data-relai-archive-chip", "true");
-
-    const header = document.createElement("div");
-    header.className = "relai-chip-header";
-    const title = document.createElement("div");
-    title.className = "relai-chip-title";
-    title.textContent = "Rel.AI generated ZIP";
-    const close = document.createElement("button");
-    close.className = "relai-chip-close";
-    close.type = "button";
-    close.setAttribute("aria-label", "Close Rel.AI ZIP chip");
-    close.textContent = "×";
-    close.addEventListener("click", () => panel.remove());
-    header.append(title, close);
-
-    const chip = document.createElement("div");
-    chip.className = "relai-chip-file";
-    chip.draggable = true;
-    chip.setAttribute("role", "button");
-    chip.setAttribute("tabindex", "0");
-    chip.setAttribute("aria-label", `Drag ${file.name} into the ChatGPT composer`);
-
-    const icon = document.createElement("div");
-    icon.className = "relai-chip-icon";
-    icon.textContent = "📦";
-
-    const textWrap = document.createElement("div");
-    textWrap.style.minWidth = "0";
-    const name = document.createElement("div");
-    name.className = "relai-chip-name";
-    name.textContent = file.name;
-    const meta = document.createElement("div");
-    meta.className = "relai-chip-meta";
-    meta.textContent = `${formatBytes(file.size)} • drag this into the message box`;
-    textWrap.append(name, meta);
-    chip.append(icon, textWrap);
-
-    chip.addEventListener("dragstart", (event) => {
-      panel.classList.add("relai-chip-dragging");
-      if (!event.dataTransfer) return;
-      event.dataTransfer.effectAllowed = "copy";
-      try { event.dataTransfer.items.add(file); } catch (_error) {}
-      try { event.dataTransfer.setData("text/plain", file.name); } catch (_error) {}
-      try { event.dataTransfer.setData("application/x-relai-archive-name", file.name); } catch (_error) {}
-    });
-
-    chip.addEventListener("dragend", () => {
-      panel.classList.remove("relai-chip-dragging");
-    });
-
-    const help = document.createElement("div");
-    help.className = "relai-chip-help";
-    help.textContent = "Drag the ZIP chip into ChatGPT's composer/upload area, wait until the attachment appears, then send the inserted prompt.";
-
-    panel.append(header, chip, help);
-    document.body.appendChild(panel);
-
-    try {
-      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-    } catch (_error) {}
-
-    return { ok: true, message: `Draggable ZIP chip shown for ${file.name}. Drag it into ChatGPT's composer.` };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
 
 async function insertRequestIntoTab(tabId, text, submit, files) {
   const safeFiles = Array.isArray(files) ? files : [];
@@ -1143,8 +871,8 @@ async function insertRequestIntoTab(tabId, text, submit, files) {
   });
 
   // Optimized path: the user's logs showed ChatGPT accepts MAIN-world drag/drop,
-  // while debugger/file-picker fallbacks add long delays and can leave the upload overlay stuck.
-  // Keep one fast MAIN-world attempt. If it cannot confirm upload, show the draggable ZIP fallback.
+  // while debugger/file-picker fallbacks add delays or fail.
+  // Keep one fast MAIN-world attempt, then surface a manual download fallback if upload is not confirmed.
   try {
     const details = {
       target: { tabId },
@@ -1160,15 +888,8 @@ async function insertRequestIntoTab(tabId, text, submit, files) {
 
     result.executionWorld = "main-world";
 
-    if (safeFiles.length > 0 && !result.uploaded) {
-      relaiLog("chip.auto.start", { tabId, reason: "fast-upload-not-confirmed", result });
-      const chip = await showArchiveDragChipInTab(tabId, safeFiles);
-      relaiLog("chip.auto.result", chip);
-      result.dragChipShown = Boolean(chip && chip.ok);
-      result.dragChipMessage = chip && (chip.message || chip.error);
-      if (!result.uploadError && chip && chip.ok) {
-        result.uploadError = "Automatic upload was not confirmed; a draggable ZIP chip was added to the ChatGPT tab.";
-      }
+    if (safeFiles.length > 0 && !result.uploaded && !result.uploadError) {
+      result.uploadError = "ChatGPT did not confirm the ZIP attachment. Download the generated ZIP and drag it into ChatGPT manually.";
     }
 
     return result;
@@ -1191,12 +912,9 @@ async function insertRequestIntoTab(tabId, text, submit, files) {
       result.executionWorld = "isolated-world-text-only";
 
       if (safeFiles.length > 0) {
-        const chip = await showArchiveDragChipInTab(tabId, safeFiles);
-        result.dragChipShown = Boolean(chip && chip.ok);
-        result.dragChipMessage = chip && (chip.message || chip.error);
         result.uploaded = false;
-        result.uploadMethod = "manual-chip";
-        result.uploadError = "Automatic upload could not run in MAIN world. A draggable ZIP chip was added instead.";
+        result.uploadMethod = "manual-download";
+        result.uploadError = "Automatic ZIP upload could not run in MAIN world. Download the generated ZIP and drag it into ChatGPT manually.";
       }
       return result;
     } catch (isolatedError) {
@@ -1831,7 +1549,7 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
     return {
       uploaded: false,
       uploadMethod: "main-world-drag-drop",
-      uploadError: result.uploadError || "ChatGPT did not confirm the ZIP attachment. Use the draggable ZIP chip fallback."
+      uploadError: result.uploadError || "ChatGPT did not confirm the ZIP attachment. Download the generated ZIP and drag it into ChatGPT manually."
     };
   }
 

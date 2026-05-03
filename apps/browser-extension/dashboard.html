@@ -110,19 +110,10 @@
       <button id="composeRequest" class="primary">Create ChatGPT request</button>
     </section>
 
-
     <section id="archiveFallback" class="archive-fallback hidden" aria-live="polite">
       <h2>ZIP attachment fallback</h2>
-      <p id="archiveFallbackText">Automatic attachment was not confirmed. Rel.AI can show a draggable ZIP card inside the ChatGPT tab. Drag it into the composer, wait for the attachment, then send the inserted request.</p>
-      <div id="dashboardArchiveChip" class="dashboard-archive-chip hidden" draggable="true" role="button" tabindex="0" aria-label="Drag generated ZIP into ChatGPT">
-        <div class="dashboard-archive-icon">ZIP</div>
-        <div class="dashboard-archive-copy">
-          <strong id="dashboardArchiveName">rel-ai-context.zip</strong>
-          <span id="dashboardArchiveMeta">Drag this card into the ChatGPT composer if the in-page chip does not appear.</span>
-        </div>
-      </div>
+      <p id="archiveFallbackText">Automatic attachment was not confirmed. Download the generated ZIP, drag it into the open ChatGPT tab, wait for the attachment, then send the inserted request.</p>
       <div class="archive-actions">
-        <button id="showArchiveChip" type="button">Show ZIP card in ChatGPT</button>
         <button id="downloadArchive" type="button">Download ZIP</button>
         <button id="copyArchivePath" type="button">Copy ZIP path</button>
       </div>
