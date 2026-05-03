@@ -3,6 +3,7 @@ importScripts("protocol.js");
 const HOST_NAME = "com.relai.request_builder";
 const EXTENSION_VERSION = "0.9.19";
 const DEBUG_LOG_KEY = "relaiDebugLog";
+let _debugLogGeneration = 0;
 
 function relaiLog(stage, details) {
   const entry = {
@@ -14,7 +15,9 @@ function relaiLog(stage, details) {
   try { console.log("[Rel.AI]", entry.stage, entry.details); } catch (_error) {}
 
   try {
+    const gen = _debugLogGeneration;
     chrome.storage.local.get({ [DEBUG_LOG_KEY]: [] }, (stored) => {
+      if (_debugLogGeneration !== gen) return;
       const list = Array.isArray(stored[DEBUG_LOG_KEY]) ? stored[DEBUG_LOG_KEY] : [];
       list.push(entry);
       chrome.storage.local.set({ [DEBUG_LOG_KEY]: list.slice(-300) });
@@ -152,11 +155,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleMessage(message, sender) {
-  relaiLog("background.message.received", {
-    message: summarizeMessageForDebug(message),
-    senderTabId: sender && sender.tab && sender.tab.id,
-    senderUrl: sender && sender.url
-  });
+  const isDebugMetaMessage = message && (message.type === "relai.getDebugLog" || message.type === "relai.clearDebugLog");
+  if (!isDebugMetaMessage) {
+    relaiLog("background.message.received", {
+      message: summarizeMessageForDebug(message),
+      senderTabId: sender && sender.tab && sender.tab.id,
+      senderUrl: sender && sender.url
+    });
+  }
 
   if (!message || typeof message !== "object") {
     throw new Error("Invalid Rel.AI extension message.");
@@ -213,6 +219,7 @@ async function handleMessage(message, sender) {
   }
 
   if (message.type === "relai.clearDebugLog") {
+    _debugLogGeneration++;
     return new Promise((resolve) => {
       chrome.storage.local.set({ [DEBUG_LOG_KEY]: [] }, () => resolve({ ok: true, type: "relai.debugLogCleared" }));
     });
