@@ -303,6 +303,14 @@ Diagnostics are hidden by default. Open the Rel.AI dashboard and press **Ctrl+Sh
 
 Use diagnostics only when troubleshooting bridge, ZIP attachment, or patch-apply behavior. The log is stored locally by the extension and is not sent anywhere unless you copy it.
 
+
+## Version 0.9.24
+
+- OpenCode fallback now writes `.relai/fallback-latest.json` plus a per-run status file so you can verify whether fallback started, completed, failed, or timed out.
+- Fallback timeout is now explicit through `fallbackTimeoutMs` in `~/.rel-ai/opencode.json` and defaults to 4 minutes.
+- The browser apply flow now waits long enough for the native fallback result instead of timing out early.
+- Apply result messages now include fallback status, exit code, signal, timeout, and status-file path.
+
 ## Version 0.9.23
 
 - Dismisses ChatGPT's stuck drag-and-drop upload overlay after ZIP attachment attempts.

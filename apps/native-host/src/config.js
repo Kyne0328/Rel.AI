@@ -20,6 +20,7 @@ function defaultConfig() {
     fallbackAgent: "",
     defaultWorkspace: "default",
     timeoutMs: 15 * 60 * 1000,
+    fallbackTimeoutMs: 4 * 60 * 1000,
     maxOutputBytes: 1024 * 1024,
     maxPromptChars: 120000,
     maxDiffChars: 500000,
@@ -90,6 +91,9 @@ function normalizeConfig(config) {
     timeoutMs: Number.isInteger(candidate.timeoutMs) && candidate.timeoutMs >= 10000
       ? candidate.timeoutMs
       : base.timeoutMs,
+    fallbackTimeoutMs: Number.isInteger(candidate.fallbackTimeoutMs) && candidate.fallbackTimeoutMs >= 10000
+      ? candidate.fallbackTimeoutMs
+      : base.fallbackTimeoutMs,
     maxOutputBytes: Number.isInteger(candidate.maxOutputBytes) && candidate.maxOutputBytes >= 65536
       ? candidate.maxOutputBytes
       : base.maxOutputBytes,

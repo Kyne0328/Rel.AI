@@ -59,7 +59,9 @@ function buildFallbackPrompt(applyRequest, workspace, failure) {
 
 async function runOpenCodeFallback(applyRequest, workspace, config, failure) {
   const prompt = buildFallbackPrompt(applyRequest, workspace, failure);
-  const promptFile = writeFallbackPromptFile(workspace.path, prompt);
+  const relaiDir = ensureRelAiWorkspaceDir(workspace.path);
+  const promptFile = writeFallbackPromptFile(relaiDir, prompt);
+  const statusFile = makeFallbackStatusFile(relaiDir);
   const command = config.opencodeCommand || "opencode";
   const args = ["run"];
 
@@ -79,26 +81,99 @@ async function runOpenCodeFallback(applyRequest, workspace, config, failure) {
 
   args.push(`Read ${promptFile.relativePath} and execute the Rel.AI fallback instructions. Do not modify files under .relai unless explicitly necessary.`);
 
+  const commandLabel = makeCommandLabel(command, args);
+  const startedAt = new Date().toISOString();
+  writeFallbackStatus(statusFile, {
+    status: "starting",
+    startedAt,
+    workspace: workspace.alias,
+    command: commandLabel,
+    promptFile: promptFile.relativePath,
+    trigger: {
+      phase: failure.phase,
+      exitCode: failure.exitCode
+    },
+    model: model || undefined,
+    agent: agent || undefined
+  });
+
   let result;
+  let promptFileRemoved = false;
   try {
-    result = await runProcess(command, args, workspace.path, config);
+    result = await runProcess(command, args, workspace.path, config, (update) => {
+      writeFallbackStatus(statusFile, {
+        status: update.status || "running",
+        startedAt,
+        updatedAt: new Date().toISOString(),
+        workspace: workspace.alias,
+        command: commandLabel,
+        promptFile: promptFile.relativePath,
+        pid: update.pid,
+        trigger: {
+          phase: failure.phase,
+          exitCode: failure.exitCode
+        },
+        model: model || undefined,
+        agent: agent || undefined,
+        timeoutMs: update.timeoutMs
+      });
+    });
   } finally {
-    cleanupFallbackPromptFile(promptFile.absolutePath);
+    promptFileRemoved = cleanupFallbackPromptFile(promptFile.absolutePath);
   }
 
-  return {
-    ok: result.exitCode === 0,
-    command: makeCommandLabel(command, args),
+  const endedAt = new Date().toISOString();
+  const ok = result.exitCode === 0;
+  const finalStatus = result.timedOut ? "timed_out" : ok ? "completed" : "failed";
+  const finalSnapshot = {
+    status: finalStatus,
+    startedAt,
+    endedAt,
+    workspace: workspace.alias,
+    command: commandLabel,
     promptFile: promptFile.relativePath,
+    promptFileRemoved,
+    statusFile: statusFile.relativePath,
+    pid: result.pid,
+    trigger: {
+      phase: failure.phase,
+      exitCode: failure.exitCode
+    },
+    model: model || undefined,
+    agent: agent || undefined,
+    timeoutMs: result.timeoutMs,
+    timedOut: Boolean(result.timedOut),
+    exitCode: result.exitCode,
+    signal: result.signal,
+    error: result.error,
+    stdoutTail: truncateForPrompt(result.stdout || "", 4000),
+    stderrTail: truncateForPrompt(result.stderr || "", 4000)
+  };
+  writeFallbackStatus(statusFile, finalSnapshot);
+
+  return {
+    ok,
+    command: commandLabel,
+    promptFile: promptFile.relativePath,
+    promptFileRemoved,
+    statusFile: statusFile.relativePath,
+    status: finalStatus,
+    timedOut: Boolean(result.timedOut),
+    timeoutMs: result.timeoutMs,
+    pid: result.pid,
     model: model || undefined,
     agent: agent || undefined,
     ...summarizeCommand(result)
   };
 }
 
-function writeFallbackPromptFile(workspacePath, prompt) {
+function ensureRelAiWorkspaceDir(workspacePath) {
   const relaiDir = path.join(workspacePath, ".relai");
   fs.mkdirSync(relaiDir, { recursive: true });
+  return relaiDir;
+}
+
+function writeFallbackPromptFile(relaiDir, prompt) {
   const filename = `fallback-${process.pid}-${Date.now()}.md`;
   const absolutePath = path.join(relaiDir, filename);
   fs.writeFileSync(absolutePath, prompt, { mode: 0o600 });
@@ -108,11 +183,33 @@ function writeFallbackPromptFile(workspacePath, prompt) {
   };
 }
 
+function makeFallbackStatusFile(relaiDir) {
+  const filename = `fallback-${process.pid}-${Date.now()}.status.json`;
+  const absolutePath = path.join(relaiDir, filename);
+  return {
+    absolutePath,
+    relativePath: `.relai/${filename}`,
+    latestAbsolutePath: path.join(relaiDir, "fallback-latest.json"),
+    latestRelativePath: ".relai/fallback-latest.json"
+  };
+}
+
+function writeFallbackStatus(statusFile, value) {
+  const payload = `${JSON.stringify({ ...value, latestStatusFile: statusFile.latestRelativePath }, null, 2)}\n`;
+  try {
+    fs.writeFileSync(statusFile.absolutePath, payload, { mode: 0o600 });
+  } catch (_error) {}
+  try {
+    fs.writeFileSync(statusFile.latestAbsolutePath, payload, { mode: 0o600 });
+  } catch (_error) {}
+}
+
 function cleanupFallbackPromptFile(filePath) {
   try {
     fs.unlinkSync(filePath);
+    return true;
   } catch (_error) {
-    // Ignore cleanup failures. The prompt contains only the patch/failure context already approved for fallback.
+    return false;
   }
 }
 
@@ -134,29 +231,46 @@ function selectAgent(applyRequest, config) {
   return "";
 }
 
-function runProcess(command, args, cwd, config) {
+function runProcess(command, args, cwd, config, onStatus) {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let timedOut = false;
     const maxOutputBytes = config.maxOutputBytes || 1024 * 1024;
-    const timeoutMs = config.timeoutMs || 15 * 60 * 1000;
+    const timeoutMs = config.fallbackTimeoutMs || config.timeoutMs || 4 * 60 * 1000;
 
     const child = spawn(command, args, {
       cwd,
       shell: false,
       env: {
         ...process.env,
+        CI: process.env.CI || "1",
         REL_AI: "1",
-        REL_AI_PATCH_FIRST: "1"
+        REL_AI_PATCH_FIRST: "1",
+        REL_AI_FALLBACK: "1"
       }
     });
 
-    const timer = setTimeout(() => {
+    if (typeof onStatus === "function") {
+      onStatus({ status: "running", pid: child.pid, timeoutMs });
+    }
+
+    const killTimer = setTimeout(() => {
       if (!settled) {
+        timedOut = true;
+        if (typeof onStatus === "function") {
+          onStatus({ status: "timing_out", pid: child.pid, timeoutMs });
+        }
         child.kill("SIGTERM");
       }
     }, timeoutMs);
+
+    const forceKillTimer = setTimeout(() => {
+      if (!settled && timedOut) {
+        child.kill("SIGKILL");
+      }
+    }, timeoutMs + 5000);
 
     child.stdout.on("data", (chunk) => {
       stdout = appendLimited(stdout, chunk.toString("utf8"), maxOutputBytes);
@@ -171,8 +285,9 @@ function runProcess(command, args, cwd, config) {
         return;
       }
       settled = true;
-      clearTimeout(timer);
-      resolve({ exitCode: -1, signal: undefined, stdout, stderr, error: error.message });
+      clearTimeout(killTimer);
+      clearTimeout(forceKillTimer);
+      resolve({ exitCode: -1, signal: undefined, stdout, stderr, error: error.message, timedOut, timeoutMs, pid: child.pid });
     });
 
     child.on("close", (code, signal) => {
@@ -180,12 +295,16 @@ function runProcess(command, args, cwd, config) {
         return;
       }
       settled = true;
-      clearTimeout(timer);
+      clearTimeout(killTimer);
+      clearTimeout(forceKillTimer);
       resolve({
         exitCode: typeof code === "number" ? code : -1,
         signal: signal || undefined,
         stdout: stdout.trim(),
-        stderr: stderr.trim()
+        stderr: stderr.trim(),
+        timedOut,
+        timeoutMs,
+        pid: child.pid
       });
     });
   });

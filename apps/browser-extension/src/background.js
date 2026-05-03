@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.23";
+const EXTENSION_VERSION = "0.9.24";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;

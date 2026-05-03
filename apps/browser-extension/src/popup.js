@@ -549,7 +549,13 @@ function renderResponse(response) {
   }
 
   if (response.fallback) {
-    setStatus(response.fallback.ok ? "OpenCode fallback completed." : "OpenCode fallback failed.", !response.fallback.ok);
+    const details = [];
+    if (response.fallback.status) details.push(`status: ${response.fallback.status}`);
+    if (response.fallback.exitCode !== undefined) details.push(`exit: ${response.fallback.exitCode}`);
+    if (response.fallback.signal) details.push(`signal: ${response.fallback.signal}`);
+    if (response.fallback.timedOut) details.push(`timed out after ${Math.round((response.fallback.timeoutMs || 0) / 1000)}s`);
+    if (response.fallback.statusFile) details.push(`status file: ${response.fallback.statusFile}`);
+    setStatus(`${response.fallback.ok ? "OpenCode fallback completed." : "OpenCode fallback failed."}${details.length ? ` ${details.join(" | ")}` : ""}`, !response.fallback.ok);
     return;
   }
 

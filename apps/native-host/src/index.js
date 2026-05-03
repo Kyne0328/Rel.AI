@@ -34,7 +34,8 @@ startNativeMessagingLoop(process.stdin, process.stdout, async (rawMessage) => {
           maxContextFiles: config.maxContextFiles,
           maxContextChars: config.maxContextChars,
           maxContextFileBytes: config.maxContextFileBytes,
-          maxDiffChars: config.maxDiffChars
+          maxDiffChars: config.maxDiffChars,
+          fallbackTimeoutMs: config.fallbackTimeoutMs
         },
         fallbackModel: config.fallbackModel || "",
         fallbackAgent: config.fallbackAgent || "",

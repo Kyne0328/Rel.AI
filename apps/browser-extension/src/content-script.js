@@ -297,7 +297,7 @@
           source: decision.action === "dryRun" ? "inline-preview-dry-run" : "inline-preview-apply",
           dryRun: decision.action === "dryRun",
           fallbackEnabled: decision.action === "dryRun" ? false : Boolean(decision.fallbackEnabled)
-        }, 300000);
+        }, 17 * 60 * 1000);
 
         if (!response || !response.ok) {
           throw new Error(response && response.error ? response.error : response && response.message ? response.message : "Rel.AI native bridge returned an error.");
@@ -377,7 +377,7 @@
           return;
         }
         settled = true;
-        reject(new Error("Rel.AI is still working after the timeout. The native host may be running OpenCode fallback. Check your repo, then try again with fallback disabled if needed."));
+        reject(new Error("Rel.AI did not return before the browser timeout. If fallback was enabled, check .relai/fallback-latest.json in the workspace to see whether OpenCode is still running, failed, or timed out."));
       }, timeoutMs);
 
       if (relAiStopped || !isExtensionContextAlive()) {
@@ -1031,11 +1031,18 @@
     }
     if (response.fallback) {
       const base = response.message || (response.fallback.ok ? "OpenCode fallback completed." : "OpenCode fallback failed.");
+      const details = [];
+      if (response.fallback.status) details.push(`status: ${response.fallback.status}`);
+      if (response.fallback.exitCode !== undefined) details.push(`exit: ${response.fallback.exitCode}`);
+      if (response.fallback.signal) details.push(`signal: ${response.fallback.signal}`);
+      if (response.fallback.timedOut) details.push(`timed out after ${Math.round((response.fallback.timeoutMs || 0) / 1000)}s`);
+      if (response.fallback.statusFile) details.push(`status: ${response.fallback.statusFile}`);
+      if (response.fallback.promptFile) details.push(`prompt: ${response.fallback.promptFile}${response.fallback.promptFileRemoved ? " (removed after run)" : ""}`);
       if (!response.fallback.ok) {
         const detail = response.fallback.error || response.fallback.stderr || response.fallback.stdout || "";
-        return detail ? `${base} ${String(detail).slice(0, 500)}` : base;
+        if (detail) details.push(String(detail).slice(0, 500));
       }
-      return base;
+      return details.length ? `${base} ${details.join(" | ")}` : base;
     }
     if (response.test && response.test.exitCode !== undefined) {
       return response.test.ok ? "Patch applied; tests passed." : "Patch applied; tests failed.";

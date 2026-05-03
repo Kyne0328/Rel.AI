@@ -253,6 +253,7 @@ function runProcess(command, args, options, config) {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let timedOut = false;
     const maxOutputBytes = config.maxOutputBytes || 1024 * 1024;
     const timeoutMs = config.timeoutMs || 15 * 60 * 1000;
     const child = options.shell
@@ -261,9 +262,16 @@ function runProcess(command, args, options, config) {
 
     const timer = setTimeout(() => {
       if (!settled) {
+        timedOut = true;
         child.kill("SIGTERM");
       }
     }, timeoutMs);
+
+    const forceKillTimer = setTimeout(() => {
+      if (!settled && timedOut) {
+        child.kill("SIGKILL");
+      }
+    }, timeoutMs + 5000);
 
     child.stdout.on("data", (chunk) => {
       stdout = appendLimited(stdout, chunk.toString("utf8"), maxOutputBytes);
@@ -279,7 +287,8 @@ function runProcess(command, args, options, config) {
       }
       settled = true;
       clearTimeout(timer);
-      resolve({ exitCode: -1, signal: undefined, stdout, stderr, error: error.message });
+      clearTimeout(forceKillTimer);
+      resolve({ exitCode: -1, signal: undefined, stdout, stderr, error: error.message, timedOut, timeoutMs });
     });
 
     child.on("close", (code, signal) => {
@@ -288,11 +297,14 @@ function runProcess(command, args, options, config) {
       }
       settled = true;
       clearTimeout(timer);
+      clearTimeout(forceKillTimer);
       resolve({
         exitCode: typeof code === "number" ? code : -1,
         signal: signal || undefined,
         stdout: stdout.trim(),
-        stderr: stderr.trim()
+        stderr: stderr.trim(),
+        timedOut,
+        timeoutMs
       });
     });
   });
@@ -312,6 +324,7 @@ function summarizeCommand(result) {
     exitCode: result.exitCode,
     ...(result.signal ? { signal: result.signal } : {}),
     ...(result.error ? { error: result.error } : {}),
+    ...(result.timedOut ? { timedOut: true, timeoutMs: result.timeoutMs } : {}),
     ...(result.stdout ? { stdout: result.stdout } : {}),
     ...(result.stderr ? { stderr: result.stderr } : {})
   };
