@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const CONFIG_VERSION = 3;
+const CONFIG_VERSION = 4;
 
 function getRelAiDir() {
   return path.join(os.homedir(), ".rel-ai");
@@ -23,6 +23,9 @@ function defaultConfig() {
     fallbackTimeoutMs: 4 * 60 * 1000,
     opencodeServerUrl: "http://127.0.0.1:4096",
     opencodeServerArgs: ["serve"],
+    geminiApiKey: "",
+    geminiModel: "gemini-2.5-flash",
+    geminiEndpoint: "https://generativelanguage.googleapis.com/v1beta",
     maxOutputBytes: 1024 * 1024,
     maxPromptChars: 120000,
     maxDiffChars: 500000,
@@ -94,6 +97,13 @@ function normalizeConfig(config) {
     opencodeServerArgs: Array.isArray(candidate.opencodeServerArgs) && candidate.opencodeServerArgs.every((item) => typeof item === "string" && item.trim())
       ? candidate.opencodeServerArgs.map((item) => item.trim())
       : base.opencodeServerArgs,
+    geminiApiKey: typeof candidate.geminiApiKey === "string" ? candidate.geminiApiKey.trim() : base.geminiApiKey,
+    geminiModel: typeof candidate.geminiModel === "string" && candidate.geminiModel.trim()
+      ? candidate.geminiModel.trim()
+      : base.geminiModel,
+    geminiEndpoint: typeof candidate.geminiEndpoint === "string" && /^https:\/\//.test(candidate.geminiEndpoint.trim())
+      ? candidate.geminiEndpoint.trim().replace(/\/+$/g, "")
+      : base.geminiEndpoint,
     defaultWorkspace: typeof candidate.defaultWorkspace === "string" && isValidAlias(candidate.defaultWorkspace)
       ? candidate.defaultWorkspace
       : base.defaultWorkspace,

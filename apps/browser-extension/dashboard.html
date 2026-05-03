@@ -42,6 +42,26 @@
       <label for="taskPrompt">Task</label>
       <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Describe the change you want. Rel.AI will attach selected context and ask ChatGPT to produce a plan or apply block that matches the current files."></textarea>
 
+      <section class="gemini-card">
+        <h3>Prompt improvement</h3>
+        <p class="small-note">Optional. Save a Gemini API key locally, then use Gemini to tighten the task before sending it to ChatGPT. The key stays in your local Rel.AI config and is never inserted into ChatGPT.</p>
+        <div class="grid-2">
+          <label>
+            Gemini model
+            <input id="geminiModel" type="text" placeholder="gemini-2.5-flash">
+          </label>
+          <label>
+            API key
+            <input id="geminiApiKey" type="password" autocomplete="off" placeholder="leave blank to keep saved key">
+          </label>
+        </div>
+        <div class="gemini-actions">
+          <button id="saveGeminiSettings" type="button">Save Gemini settings</button>
+          <button id="improvePrompt" type="button">Improve task with Gemini</button>
+        </div>
+        <code id="geminiInfo">Gemini not checked.</code>
+      </section>
+
       <label for="responseMode">Response mode</label>
       <select id="responseMode">
         <option value="apply">Apply-ready patch: ask ChatGPT for metadata, summary, and unified diff</option>

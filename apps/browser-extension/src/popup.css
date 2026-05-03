@@ -387,3 +387,31 @@ button.primary:hover {
   overflow-wrap: anywhere;
   color: #333;
 }
+
+
+.gemini-card {
+  border: 1px solid #e6dcff;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fbf9ff;
+  margin: 10px 0;
+}
+
+.gemini-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.gemini-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+#geminiInfo {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #333;
+}

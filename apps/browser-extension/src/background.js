@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.33";
+const EXTENSION_VERSION = "0.9.36";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;
@@ -272,6 +272,16 @@ async function handleMessage(message, sender) {
     }
     const tab = await chrome.tabs.create({ url });
     return { ok: true, type: "relai.openUrl", url, tabId: tab && tab.id, message: `Opened ${url}.` };
+  }
+
+  if (message.type === "relai.saveGeminiSettings") {
+    const gemini = message.gemini && typeof message.gemini === "object" ? message.gemini : {};
+    return sendNativeMessage(RelAiProtocol.makeGeminiConfigSetMessage(gemini));
+  }
+
+  if (message.type === "relai.improvePrompt") {
+    const request = message.promptRequest && typeof message.promptRequest === "object" ? message.promptRequest : {};
+    return sendNativeMessage(RelAiProtocol.makeGeminiImprovePromptMessage(request));
   }
 
   if (message.type === "relai.composeChatGPTRequest") {

@@ -139,6 +139,15 @@ npm run model:set -- openai/gpt-4.1-mini
 
 Rel.AI intentionally keeps the fallback model configured locally. ChatGPT does not choose your local OpenCode model.
 
+Optional: configure Gemini prompt improvement:
+
+```bash
+npm run gemini:key -- YOUR_GEMINI_API_KEY
+npm run gemini:model -- gemini-2.5-flash
+```
+
+You can also save the key and model from the dashboard under **Prompt improvement**. The Gemini API key is stored in your local Rel.AI config file and is not inserted into ChatGPT. Use **Improve task with Gemini** when you want Gemini to tighten the task wording before Rel.AI sends the final request to ChatGPT.
+
 ---
 
 ## Main workflow
@@ -148,18 +157,43 @@ Rel.AI intentionally keeps the fallback model configured locally. ChatGPT does n
 3. Click **Refresh workspaces**.
 4. Choose or type a workspace alias, such as `myapp`.
 5. Describe the task.
-6. Choose a **Response mode**. Use Apply-ready patch for small changes and Plan first for larger or uncertain work.
-7. Choose a **Context scope**. Use Focused for normal tasks, Selected when you want strict selected-path context, or Full repo upload only for broad repository work.
-8. Add allowed files, folders, or globs manually, or use the workspace browser. Full repo upload can run without selected include paths.
-9. Choose **Readable context** for small tasks or **ZIP attachment** for larger context. Full repo upload always uses ZIP.
-10. Optionally select a `testCommandKey`.
-11. Click **Create ChatGPT request**.
-12. Review the inserted request in ChatGPT, then send it.
-13. If Plan first is enabled, review the returned `rel-ai-plan` block and click **Approve plan** when it matches your intent.
-14. When ChatGPT returns a `rel-ai-apply` metadata block plus a separate `diff` block, click **Apply with Rel.AI**.
-15. Review the pre-apply panel, then run **Check only** or **Apply patch**.
+6. Optional: click **Improve task with Gemini** to polish the task before sending it to ChatGPT.
+7. Choose a **Response mode**. Use Apply-ready patch for small changes and Plan first for larger or uncertain work.
+8. Choose a **Context scope**. Use Focused for normal tasks, Selected when you want strict selected-path context, or Full repo upload only for broad repository work.
+9. Add allowed files, folders, or globs manually, or use the workspace browser. Full repo upload can run without selected include paths.
+10. Choose **Readable context** for small tasks or **ZIP attachment** for larger context. Full repo upload always uses ZIP.
+11. Optionally select a `testCommandKey`.
+12. Click **Create ChatGPT request**.
+13. Review the inserted request in ChatGPT, then send it.
+14. If Plan first is enabled, review the returned `rel-ai-plan` block and click **Approve plan** when it matches your intent.
+15. When ChatGPT returns a `rel-ai-apply` metadata block plus a separate `diff` block, click **Apply with Rel.AI**.
+16. Review the pre-apply panel, then run **Check only** or **Apply patch**.
 
 The dashboard has an optional **Submit to ChatGPT after inserting** checkbox. Keep it off if you want to review the final prompt before sending.
+
+---
+
+## Gemini prompt improvement
+
+Rel.AI can optionally use Gemini through the official Gemini API to improve the user task before it is sent to ChatGPT. This is only a prompt-polishing step: Gemini does not receive the workspace ZIP or apply patches.
+
+Use it when the original task is rough, ambiguous, or too short. Gemini rewrites the task into a clearer coding request while preserving the original intent, paths, constraints, and selected context settings.
+
+The Gemini API key is stored locally in `~/.rel-ai/opencode.json` and is not shown in the dashboard after saving. `npm run config:show` masks the key.
+
+Dashboard controls:
+
+- **Gemini model** chooses the model used for prompt improvement.
+- **API key** saves a local Gemini API key. Leave it blank to keep the saved key.
+- **Save Gemini settings** stores the key/model locally.
+- **Improve task with Gemini** replaces the task textarea with the improved version.
+
+CLI equivalents:
+
+```bash
+npm run gemini:key -- YOUR_GEMINI_API_KEY
+npm run gemini:model -- gemini-2.5-flash
+```
 
 ---
 
@@ -198,6 +232,14 @@ Plan-first mode is for larger or ambiguous changes. Instead of asking ChatGPT to
 When the plan looks correct, click **Approve plan** under the ChatGPT response. Rel.AI inserts an approval message into the composer asking ChatGPT to generate the normal `rel-ai-apply` block and unified diff. This mirrors the Plan/Build split used by local coding agents: ChatGPT plans first, then only builds after user approval.
 
 If ChatGPT lacks required file contents, it is instructed to request them automatically with `rel-ai-context` instead of guessing. The user should not need to explicitly tell ChatGPT to ask for missing files.
+
+### Follow-up context requests
+
+When ChatGPT needs files that were not included in the current request, it should return a `rel-ai-context` block. Rel.AI turns that block into an interactive action inside the ChatGPT page.
+
+Click **Provide requested files** under the ChatGPT response. Rel.AI will read only the requested allowlisted workspace paths, insert the resulting context into the ChatGPT composer, and tell you to review/send it. This makes the follow-up step explicit instead of leaving the user with a raw block and no next action.
+
+If the button does not appear, use the Rel.AI dashboard's manual context box or the browser context menu action **Insert latest Rel.AI context block**.
 
 ---
 
@@ -418,6 +460,22 @@ Patch request:
 ---
 
 ## Version history
+
+### v0.9.36
+
+- Improves `rel-ai-context` follow-up UX with a clear **Provide requested files** inline action.
+- Adds a visible context callout explaining that ChatGPT requested more workspace files and that the inserted context should be reviewed and sent.
+- Adds fallback detection for context requests rendered as regular message text instead of a standard code block.
+- Extends context insertion timeout for ZIP/readable follow-ups.
+- Bumps package and extension versions to `0.9.36`.
+
+### v0.9.35
+
+- Adds optional Gemini prompt improvement before sending requests to ChatGPT.
+- Adds local Gemini API key/model settings in the dashboard and CLI.
+- Keeps the Gemini API key in local Rel.AI config and masks it in `config:show`.
+- Adds native-host Gemini API integration through `generateContent`.
+- Bumps package and extension versions to `0.9.35`.
 
 ### v0.9.34
 

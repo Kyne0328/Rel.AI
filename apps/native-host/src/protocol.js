@@ -69,7 +69,66 @@ function validateNativeMessage(value, config) {
     };
   }
 
+  if (type === "relai.geminiConfigSet") {
+    return {
+      type,
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      ...(source ? { source } : {}),
+      gemini: validateGeminiConfig(candidate.gemini || {})
+    };
+  }
+
+  if (type === "relai.geminiImprovePrompt") {
+    return {
+      type,
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      ...(source ? { source } : {}),
+      promptRequest: validateGeminiPromptRequest(candidate.promptRequest || {})
+    };
+  }
+
   throw new Error(`Unsupported message type: ${type}`);
+}
+
+
+function validateGeminiConfig(value) {
+  const candidate = requireObject(value, "Gemini config must be an object.");
+  const apiKey = optionalString(candidate.apiKey, "Gemini API key must be a string when provided.");
+  const model = optionalString(candidate.model, "Gemini model must be a string when provided.");
+  const endpoint = optionalString(candidate.endpoint, "Gemini endpoint must be a string when provided.");
+
+  if (model !== undefined && !/^[A-Za-z0-9._:-]{1,120}$/.test(model)) {
+    throw new Error("Gemini model contains unsupported characters.");
+  }
+  if (endpoint !== undefined && !/^https:\/\//.test(endpoint)) {
+    throw new Error("Gemini endpoint must be an HTTPS URL.");
+  }
+
+  return {
+    ...(apiKey !== undefined ? { apiKey } : {}),
+    ...(model !== undefined ? { model } : {}),
+    ...(endpoint !== undefined ? { endpoint } : {})
+  };
+}
+
+function validateGeminiPromptRequest(value) {
+  const candidate = requireObject(value, "Gemini prompt request must be an object.");
+  const prompt = optionalString(candidate.prompt, "Prompt must be a string.");
+  if (!prompt) {
+    throw new Error("Prompt is required before improving with Gemini.");
+  }
+
+  return {
+    prompt: prompt.slice(0, 12000),
+    ...(candidate.workspace ? { workspace: validateWorkspaceAlias(candidate.workspace, "Gemini workspace") } : {}),
+    ...(candidate.responseMode ? { responseMode: optionalString(candidate.responseMode, "responseMode must be a string.") } : {}),
+    ...(candidate.contextScope ? { contextScope: optionalString(candidate.contextScope, "contextScope must be a string.") } : {}),
+    ...(candidate.contextMode ? { contextMode: optionalString(candidate.contextMode, "contextMode must be a string.") } : {}),
+    include: validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS),
+    exclude: validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS)
+  };
 }
 
 function validateApplyRequest(value, config) {
@@ -299,6 +358,10 @@ function makeResponse(input) {
     ...(input.limits ? { limits: input.limits } : {}),
     ...(input.fallbackModel !== undefined ? { fallbackModel: input.fallbackModel } : {}),
     ...(input.fallbackAgent !== undefined ? { fallbackAgent: input.fallbackAgent } : {}),
+    ...(input.geminiConfigured !== undefined ? { geminiConfigured: input.geminiConfigured } : {}),
+    ...(input.geminiModel !== undefined ? { geminiModel: input.geminiModel } : {}),
+    ...(input.geminiEndpoint !== undefined ? { geminiEndpoint: input.geminiEndpoint } : {}),
+    ...(input.improvedPrompt ? { improvedPrompt: input.improvedPrompt } : {}),
     ...(input.dryRun ? { dryRun: true } : {}),
     ...(input.gitCheck ? { gitCheck: input.gitCheck } : {}),
     ...(input.gitApply ? { gitApply: input.gitApply } : {}),

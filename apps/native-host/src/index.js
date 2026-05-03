@@ -9,6 +9,8 @@ const { runOpenCodeFallback } = require("./opencode");
 const { buildContextBundle } = require("./contextBundle");
 const { listWorkspaceDirectory } = require("./workspaceList");
 const { startOpenCodeServer, getOpenCodeServerStatus } = require("./opencodeServer");
+const { improvePromptWithGemini } = require("./gemini");
+const { writeConfig } = require("./config");
 
 startNativeMessagingLoop(process.stdin, process.stdout, async (rawMessage) => {
   try {
@@ -41,6 +43,9 @@ startNativeMessagingLoop(process.stdin, process.stdout, async (rawMessage) => {
         },
         fallbackModel: config.fallbackModel || "",
         fallbackAgent: config.fallbackAgent || "",
+        geminiConfigured: Boolean(config.geminiApiKey),
+        geminiModel: config.geminiModel || "gemini-2.5-flash",
+        geminiEndpoint: config.geminiEndpoint || "https://generativelanguage.googleapis.com/v1beta",
         nativeHost: getNativeHostInfo(),
         message: `Loaded ${Object.keys(config.workspaces).length} workspace alias(es).`
       });
@@ -90,6 +95,39 @@ startNativeMessagingLoop(process.stdin, process.stdout, async (rawMessage) => {
     if (message.type === "relai.opencodeServerStatus") {
       const workspace = resolveWorkspace(config, message.workspace);
       const result = getOpenCodeServerStatus(workspace, config);
+      return makeResponse({
+        ...result,
+        requestId: message.requestId,
+        nativeHost: getNativeHostInfo()
+      });
+    }
+
+    if (message.type === "relai.geminiConfigSet") {
+      const next = { ...config };
+      if (Object.prototype.hasOwnProperty.call(message.gemini, "apiKey")) {
+        next.geminiApiKey = message.gemini.apiKey;
+      }
+      if (Object.prototype.hasOwnProperty.call(message.gemini, "model")) {
+        next.geminiModel = message.gemini.model || "gemini-2.5-flash";
+      }
+      if (Object.prototype.hasOwnProperty.call(message.gemini, "endpoint")) {
+        next.geminiEndpoint = message.gemini.endpoint || "https://generativelanguage.googleapis.com/v1beta";
+      }
+      const saved = writeConfig(next);
+      return makeResponse({
+        ok: true,
+        type: "relai.geminiConfig",
+        requestId: message.requestId,
+        geminiConfigured: Boolean(saved.geminiApiKey),
+        geminiModel: saved.geminiModel || "gemini-2.5-flash",
+        geminiEndpoint: saved.geminiEndpoint || "https://generativelanguage.googleapis.com/v1beta",
+        nativeHost: getNativeHostInfo(),
+        message: `Saved Gemini prompt improvement settings. API key ${saved.geminiApiKey ? "is configured" : "is not configured"}.`
+      });
+    }
+
+    if (message.type === "relai.geminiImprovePrompt") {
+      const result = await improvePromptWithGemini(message.promptRequest, config);
       return makeResponse({
         ...result,
         requestId: message.requestId,

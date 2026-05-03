@@ -17,7 +17,9 @@ function main() {
   }
 
   if (command === "show") {
-    console.log(JSON.stringify(readConfig(), null, 2));
+    const config = readConfig();
+    const safe = { ...config, geminiApiKey: config.geminiApiKey ? "[configured]" : "" };
+    console.log(JSON.stringify(safe, null, 2));
     return;
   }
 
@@ -68,6 +70,21 @@ function main() {
 
   if (command === "set" && subcommand === "opencode-server-args") {
     setConfigArray("opencodeServerArgs", rest, "OpenCode server args");
+    return;
+  }
+
+  if (command === "set" && subcommand === "gemini-api-key") {
+    setConfigString("geminiApiKey", rest, "Gemini API key", true);
+    return;
+  }
+
+  if (command === "set" && subcommand === "gemini-model") {
+    setConfigString("geminiModel", rest, "Gemini model");
+    return;
+  }
+
+  if (command === "set" && subcommand === "gemini-endpoint") {
+    setConfigString("geminiEndpoint", rest, "Gemini API endpoint");
     return;
   }
 
@@ -171,12 +188,12 @@ function removeTestCommand(args) {
   console.log(`Removed test command '${key}' from workspace '${workspaceAlias}'.`);
 }
 
-function setConfigString(field, args, label) {
+function setConfigString(field, args, label, secret = false) {
   const value = args.join(" ").trim();
   const config = readConfig();
   config[field] = value;
   writeConfig(config);
-  console.log(`Set ${label} to '${value || ""}'.`);
+  console.log(secret ? `Set ${label} to ${value ? "[configured]" : ""}.` : `Set ${label} to '${value || ""}'.`);
 }
 
 function setConfigArray(field, args, label) {
@@ -212,12 +229,17 @@ Commands:
   set opencode-agent <agent>
   set opencode-server-url <url>
   set opencode-server-args <arg1> <arg2> ...
+  set gemini-api-key <key>
+  set gemini-model <model>
+  set gemini-endpoint <https-url>
   set allow-direct-test-commands <true|false>
 
 Common setup:
   npm run workspace:add -- myapp /path/to/my/project
   npm run testcmd:add -- myapp unit "npm test -- --runInBand"
   npm run model:set -- openai/gpt-4.1-mini
+  npm run gemini:key -- YOUR_GEMINI_API_KEY
+  npm run gemini:model -- gemini-2.5-flash
 `);
 }
 

@@ -389,6 +389,26 @@ function validateFallback(value) {
     };
   }
 
+  function makeGeminiConfigSetMessage(gemini) {
+    return {
+      type: "relai.geminiConfigSet",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: uuid(),
+      source: "browser",
+      gemini: gemini || {}
+    };
+  }
+
+  function makeGeminiImprovePromptMessage(promptRequest) {
+    return {
+      type: "relai.geminiImprovePrompt",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: uuid(),
+      source: "browser",
+      promptRequest: promptRequest || {}
+    };
+  }
+
   function makePingMessage() {
     return {
       type: "ping",
@@ -469,6 +489,8 @@ function validateFallback(value) {
     makeListWorkspaceMessage,
     makeOpenCodeServerStartMessage,
     makeOpenCodeServerStatusMessage,
+    makeGeminiConfigSetMessage,
+    makeGeminiImprovePromptMessage,
     makePingMessage,
     makeConfigSummaryMessage,
     looksLikeApply,

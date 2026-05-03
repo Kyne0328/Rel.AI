@@ -5,6 +5,9 @@ const inlineButtonsEl = document.getElementById("inlineButtons");
 const workspaceEl = document.getElementById("workspace");
 const workspaceManualEl = document.getElementById("workspaceManual");
 const taskPromptEl = document.getElementById("taskPrompt");
+const geminiModelEl = document.getElementById("geminiModel");
+const geminiApiKeyEl = document.getElementById("geminiApiKey");
+const geminiInfoEl = document.getElementById("geminiInfo");
 const responseModeEl = document.getElementById("responseMode");
 const includePathsEl = document.getElementById("includePaths");
 const excludePathsEl = document.getElementById("excludePaths");
@@ -56,6 +59,8 @@ bind("clearDebugLog", () => clearDebugLog());
 bind("opencodeServerStart", () => opencodeServerStart());
 bind("opencodeServerStatus", () => opencodeServerStatus());
 bind("opencodeServerOpen", () => opencodeServerOpen());
+bind("saveGeminiSettings", () => saveGeminiSettings());
+bind("improvePrompt", () => improvePromptWithGemini());
 
 
 document.addEventListener("keydown", (event) => {
@@ -102,7 +107,7 @@ if (contextScopeEl) {
   });
 }
 
-for (const el of [workspaceManualEl, taskPromptEl, responseModeEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextScopeEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl].filter(Boolean)) {
+for (const el of [workspaceManualEl, taskPromptEl, geminiModelEl, responseModeEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextScopeEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl].filter(Boolean)) {
   el.addEventListener("change", saveDraft);
   el.addEventListener("input", debounce(saveDraft, 300));
 }
@@ -159,6 +164,7 @@ async function loadConfig(showResult) {
   configSummary = response;
   populateWorkspaceOptions(response.workspaces || []);
   populateTestCommandOptions();
+  renderGeminiStatus(response);
 
   if (showResult) {
     setStatus(`Loaded ${response.workspaces ? response.workspaces.length : 0} workspace alias(es).`);
@@ -263,6 +269,73 @@ async function composeRequest() {
     },
     autoSubmit: autoSubmitEl.checked
   });
+}
+
+
+async function saveGeminiSettings() {
+  const model = clean(geminiModelEl && geminiModelEl.value);
+  const apiKey = clean(geminiApiKeyEl && geminiApiKeyEl.value);
+  const response = await sendMessage({
+    type: "relai.saveGeminiSettings",
+    gemini: {
+      ...(apiKey ? { apiKey } : {}),
+      ...(model ? { model } : {})
+    }
+  });
+  if (response && response.ok && geminiApiKeyEl) {
+    geminiApiKeyEl.value = "";
+  }
+  renderGeminiStatus(response);
+  if (response && response.ok) {
+    await loadConfig(false).catch(() => {});
+  }
+  return response;
+}
+
+async function improvePromptWithGemini() {
+  const prompt = clean(taskPromptEl.value);
+  if (!prompt) {
+    throw new Error("Type a task before improving it with Gemini.");
+  }
+
+  const workspace = clean(workspaceManualEl.value || workspaceEl.value);
+  const response = await sendMessage({
+    type: "relai.improvePrompt",
+    promptRequest: {
+      prompt,
+      ...(workspace ? { workspace } : {}),
+      responseMode: clean(responseModeEl && responseModeEl.value) || "apply",
+      contextScope: clean(contextScopeEl && contextScopeEl.value) || "focused",
+      contextMode: clean(contextModeEl && contextModeEl.value) || "readable",
+      include: lines(includePathsEl.value),
+      exclude: lines(excludePathsEl.value)
+    }
+  });
+
+  if (response && response.ok && response.improvedPrompt) {
+    taskPromptEl.value = response.improvedPrompt;
+    await saveDraft();
+  }
+  renderGeminiStatus(response);
+  return response;
+}
+
+function renderGeminiStatus(response) {
+  if (!geminiInfoEl) return;
+  if (!response) {
+    geminiInfoEl.textContent = "Gemini not checked.";
+    return;
+  }
+  const model = response.geminiModel || (configSummary && configSummary.geminiModel) || "gemini-2.5-flash";
+  const configured = response.geminiConfigured !== undefined
+    ? Boolean(response.geminiConfigured)
+    : Boolean(configSummary && configSummary.geminiConfigured);
+  if (geminiModelEl && !geminiModelEl.value) {
+    geminiModelEl.value = model;
+  }
+  geminiInfoEl.textContent = configured
+    ? `Gemini configured. Model: ${model}`
+    : `Gemini API key not configured. Model: ${model}`;
 }
 
 function getSelectedWorkspaceAlias() {
@@ -543,7 +616,14 @@ function renderResponse(response) {
   }
 
   if (response.type === "relai.config") {
+    renderGeminiStatus(response);
     setStatus(`Loaded ${response.workspaces ? response.workspaces.length : 0} workspace alias(es).`);
+    return;
+  }
+
+  if (response.type === "relai.geminiConfig" || response.type === "relai.geminiPrompt") {
+    renderGeminiStatus(response);
+    setStatus(response.message || (response.type === "relai.geminiPrompt" ? "Improved task prompt with Gemini." : "Saved Gemini settings."));
     return;
   }
 
@@ -728,6 +808,7 @@ function positiveInteger(value) {
 async function saveDraft() {
   const draft = {
     workspace: workspaceManualEl.value,
+    geminiModel: geminiModelEl ? geminiModelEl.value : "",
     prompt: taskPromptEl.value,
     responseMode: responseModeEl ? responseModeEl.value : "apply",
     contextScope: contextScopeEl ? contextScopeEl.value : "focused",
@@ -745,6 +826,7 @@ async function saveDraft() {
 
 function restoreDraft(draft) {
   workspaceManualEl.value = draft.workspace || "";
+  if (geminiModelEl) geminiModelEl.value = draft.geminiModel || "";
   taskPromptEl.value = draft.prompt || "";
   if (responseModeEl) responseModeEl.value = draft.responseMode || "apply";
   if (contextScopeEl) contextScopeEl.value = draft.contextScope || "focused";

@@ -145,18 +145,23 @@
 
   function scanMessage(message) {
     const blocks = [...message.querySelectorAll("pre")];
-    if (blocks.length === 0) {
-      removeApplyControls(message);
-      return;
-    }
+    let hasContextRequest = false;
 
     for (const block of blocks) {
       const text = normalizeBlockText(block.innerText || block.textContent || "");
       if (text && looksLikeContextBlock(text)) {
+        hasContextRequest = true;
         addContextButton(block, text);
       }
       if (text && looksLikePlanBlock(text)) {
         addPlanButton(block, text);
+      }
+    }
+
+    if (!hasContextRequest) {
+      const messageContext = collectContextTextForMessage(message);
+      if (messageContext) {
+        addContextButton(message, messageContext, { callout: true });
       }
     }
 
@@ -188,6 +193,37 @@
     if (apply) {
       addApplyButton(block.parentElement || block, apply.text, apply.anchor);
     }
+  }
+
+  function collectContextTextForMessage(message) {
+    if (!message) {
+      return "";
+    }
+
+    const text = message.innerText || message.textContent || "";
+    const fenced = extractFenceFromText(text, /```(?:rel-ai-context|relai-context|rel-ai-source|relai-source|json)\s*[\s\S]*?```/gi, looksLikeContextBlock);
+    if (fenced) {
+      return fenced;
+    }
+
+    const json = extractJsonObjectText(text);
+    if (json && looksLikeContextBlock(json)) {
+      return ensureFence(json, "rel-ai-context");
+    }
+
+    return "";
+  }
+
+  function extractFenceFromText(text, regex, predicate) {
+    const raw = String(text || "");
+    const matches = raw.match(regex) || [];
+    for (let i = matches.length - 1; i >= 0; i -= 1) {
+      const candidate = matches[i].trim();
+      if (predicate(normalizeBlockText(candidate))) {
+        return candidate;
+      }
+    }
+    return "";
   }
 
   function collectApplyForMessage(blocks) {
@@ -322,25 +358,30 @@
     placeApplyControl(message, anchorNode || containerTarget, container);
   }
 
-  function addContextButton(block, text) {
+  function addContextButton(block, text, options = {}) {
     const id = `context-${hashText(text)}`;
     if (hasInlineButton(block, id)) {
       return;
     }
 
     const container = document.createElement("div");
-    container.className = "relai-patch-inline";
+    container.className = options.callout ? "relai-patch-inline relai-context-callout" : "relai-patch-inline";
     container.dataset.relaiKind = "context";
     container.dataset.relaiButtonId = id;
+
+    const helper = document.createElement("span");
+    helper.className = "relai-context-helper";
+    helper.textContent = "ChatGPT requested more workspace files.";
 
     const button = document.createElement("button");
     button.type = "button";
     button.className = CONTEXT_BUTTON_CLASS;
-    button.textContent = "Insert workspace context";
+    button.textContent = "Provide requested files";
+    button.title = "Read the requested allowlisted workspace files and insert them into the ChatGPT composer.";
 
     const status = document.createElement("span");
     status.className = STATUS_CLASS;
-    status.textContent = "";
+    status.textContent = "Click to insert the requested context, then send it to ChatGPT.";
 
     button.addEventListener("click", async () => {
       if (button.dataset.relaiBusy === "1") {
@@ -348,19 +389,21 @@
       }
       button.dataset.relaiBusy = "1";
       button.disabled = true;
-      status.textContent = "Loading files...";
+      status.textContent = "Reading requested files from the workspace...";
       try {
         const response = await runtimeMessageWithTimeout({
           type: "relai.contextInline",
           text,
-          source: "inline-button"
-        }, 60000);
+          source: options.callout ? "inline-context-callout" : "inline-button"
+        }, 5 * 60 * 1000);
         if (!response || !response.ok) {
           throw new Error(response && response.error ? response.error : "Rel.AI native bridge returned an error.");
         }
-        status.textContent = response.inserted
-          ? `Inserted ${response.fileCount || 0} file(s). Review and send.`
-          : `Loaded ${response.fileCount || 0} file(s), but insertion failed: ${response.insertMessage || "unknown error"}`;
+        if (response.inserted) {
+          status.textContent = `Inserted ${response.fileCount || 0} file(s) into the composer. Review it, then press Send in ChatGPT.`;
+        } else {
+          status.textContent = `Loaded ${response.fileCount || 0} file(s), but insertion failed: ${response.insertMessage || "unknown error"}`;
+        }
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : String(error);
       } finally {
@@ -369,7 +412,11 @@
       }
     });
 
-    container.append(button, status);
+    if (options.callout) {
+      container.append(helper, button, status);
+    } else {
+      container.append(button, status);
+    }
     placeInlineControl(block, container);
   }
 
@@ -687,6 +734,10 @@
       "rel-ai-patch",
       "rel-ai-plan",
       "relai-plan",
+      "rel-ai-context",
+      "relai-context",
+      "rel-ai-source",
+      "relai-source",
       "rel-ai-diff",
       "relai-diff",
       "diff",
@@ -1188,6 +1239,21 @@
         gap: 8px;
         margin: 10px 0 12px;
         vertical-align: middle;
+      }
+      .relai-context-callout {
+        display: flex;
+        flex-wrap: wrap;
+        width: fit-content;
+        max-width: min(760px, 96%);
+        padding: 10px 12px;
+        border: 1px solid rgba(91, 141, 239, .45);
+        border-radius: 12px;
+        background: rgba(91, 141, 239, .08);
+      }
+      .relai-context-helper {
+        font-size: 12px;
+        font-weight: 600;
+        opacity: .92;
       }
       .relai-patch-inline.relai-in-toolbar {
         margin: 0 0 0 6px;
