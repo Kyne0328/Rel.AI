@@ -75,7 +75,7 @@
         <option value="selected">Selected only: file tree + explicitly selected files/folders</option>
         <option value="full">Full repo upload (filtered, advanced/slow): safe repo files without dependencies/build output</option>
       </select>
-      <p class="small-note">Focused mode is fastest. Full repo upload ignores the include list, respects Git ignore rules, removes dependency/build/cache/log/noise files, blocks secrets, and should be used only when the task genuinely needs broad repository context.</p>
+      <p class="small-note">Focused mode is fastest. Full repo upload ignores the include list, respects Git ignore rules, removes dependency/build/cache/log/noise files, blocks secrets, auto-detects your tech stack (Node, Python, Rust, Go, Java, PHP, Ruby, iOS, Flutter, .NET) to drop extra noise, and should be used only when the task genuinely needs broad repository context.</p>
 
       <label for="includePaths">Files and folders to include</label>
       <textarea id="includePaths" spellcheck="false" placeholder="src/auth.ts&#10;src/session.ts&#10;tests/**/*.test.ts"></textarea>
@@ -162,25 +162,44 @@
     </section>
 
     <section class="actions">
-      <button id="contextLatest">Insert latest context request</button>
-      <button id="contextSelected">Insert context from selected text</button>
-      <button id="sendLatest">Apply latest patch block</button>
-      <button id="sendSelected">Apply selected patch text</button>
-      <button id="scan">Rescan page</button>
+      <h3>ChatGPT page actions</h3>
+      <p class="small-note">These buttons act on the currently open ChatGPT tab. Use them when inline buttons did not appear or you want to trigger an action from the dashboard.</p>
+      <button id="contextLatest"
+        title="Find the most recent rel-ai-context block in the open ChatGPT tab, read the requested workspace files, and insert them into the ChatGPT composer for you to review and send.">
+        Provide latest context request
+      </button>
+      <button id="contextSelected"
+        title="Use the text you have selected in the ChatGPT page as a rel-ai-context request, read the requested workspace files, and insert the result into the composer.">
+        Provide context from selection
+      </button>
+      <button id="sendLatest"
+        title="Find the most recent rel-ai-apply metadata + diff blocks in the open ChatGPT tab and apply the patch via your local git apply command. Opens a preview first.">
+        Apply latest patch block
+      </button>
+      <button id="sendSelected"
+        title="Use the text you have selected in the ChatGPT page as a patch block and apply it via your local git apply. Opens a preview first.">
+        Apply selected patch text
+      </button>
+      <button id="scan"
+        title="Force the content script to re-scan the ChatGPT page and re-render Apply and Provide context inline buttons on all visible response blocks.">
+        Rescan page for Rel.AI blocks
+      </button>
     </section>
 
     <details>
-      <summary>Advanced tools</summary>
+      <summary>Manual paste tools</summary>
       <section>
-        <label for="contextManual">Context block</label>
+        <label for="contextManual">Paste a rel-ai-context block</label>
+        <p class="small-note">Use when ChatGPT returns a context request block that the inline button did not detect. Paste the full ````rel-ai-context` block or raw JSON object, then click Insert. Rel.AI will read the requested workspace files and insert them into the open ChatGPT tab.</p>
         <textarea id="contextManual" spellcheck="false" placeholder="Paste a ```rel-ai-context block here"></textarea>
-        <button id="sendContextManual">Insert context</button>
+        <button id="sendContextManual">Insert requested files into ChatGPT</button>
       </section>
 
       <section>
-        <label for="manual">Apply block</label>
+        <label for="manual">Paste a rel-ai-apply block</label>
+        <p class="small-note">Use when you want to apply a patch that the inline button did not detect. Paste the rel-ai-apply metadata block followed by the diff block, or paste a raw unified diff. Rel.AI will run git apply in your workspace.</p>
         <textarea id="manual" spellcheck="false" placeholder="Paste metadata + diff blocks, raw JSON, or unified diff here"></textarea>
-        <button id="sendManual">Apply patch</button>
+        <button id="sendManual">Apply patch from pasted text</button>
       </section>
     </details>
 

@@ -342,7 +342,7 @@ Rel.AI blocks:
 - absolute paths
 - `..` traversal
 - paths outside the allowlisted workspace
-- common secret paths such as `.env`, `.ssh`, `.npmrc`, `*.pem`, `*.key`, and credential files
+- common secret paths such as `.env`, `.ssh`, `.npmrc`, `.pypirc`, `.netrc`, `*.pem`, `*.key`, `.aws/`, `.azure/`, `gcloud/credentials`, `firebase-adminsdk*.json`, `service-account*.json`, and credential files
 - binary-looking files in context bundles
 - direct test commands from ChatGPT unless you explicitly enable them
 - silent full workspace reads; full repo upload mode must be explicitly selected and still applies ignore, size, binary, and secret-path filters
@@ -460,6 +460,36 @@ Patch request:
 ---
 
 ## Version history
+
+### 0.9.45
+
+- Fixes follow-up context ZIP upload failing silently: raises the inline base64 size limit from 250 KB to 32 MB so virtually all follow-up ZIPs include a base64 payload and upload automatically instead of being dropped.
+- Fixes `contextText()` to include the archive path in the attached file object (matching the main compose flow), so large ZIPs that still exceed the base64 threshold have a path available for CDP fallback upload.
+- Fixes `uploadFiles()` in the MAIN-world insert script to skip files with no base64 content instead of creating 0-byte File objects that always fail ChatGPT attachment confirmation; surfaces a clear download-and-drag message in that case.
+- Adds automatic tech-stack detection for full repo upload: reads root-level manifest files once per request and applies stack-specific exclusions beyond the generic defaults. Detected stacks: Node/JS/TS (`.nyc_output`, `storybook-static`, `*.snap`), Python (`.eggs`, `.tox`, `htmlcov`, `*.pyc`), Rust (`*.rlib`, `*.rmeta`), Java/Kotlin (`.gradle`, `*.class`, `*.jar`), PHP (`storage/logs`, `bootstrap/cache`), Ruby (`.bundle`, `public/assets`), iOS/macOS (`DerivedData`, `xcuserdata`), Flutter (`*.freezed.dart`, `*.g.dart`), and .NET (`bin`, `obj`, `*.dll`).
+- Updates context scope guidance sent to ChatGPT to mention stack-aware filtering so the model understands why certain file types are absent.
+- Renames and clarifies quick action buttons in the dashboard and popup: "Insert latest context request" becomes "Provide latest context request", adds hover tooltips (`title` attributes) explaining exactly what each button reads, reads from, and inserts.
+- Renames "Manual blocks" panel to "Manual paste tools" with explanatory notes describing when each tool is needed.
+- Updates dashboard context scope description to list the tech stacks that full repo upload auto-detects.
+
+### 0.9.44
+
+- Fixes `EXTENSION_VERSION` to read from the extension manifest instead of a stale hardcoded string, so version mismatch error messages show the correct installed version.
+- Fixes native messaging buffer accumulation from O(N²) chunk-by-chunk concat to a single allocation, and raises the inbound message size limit from 8 MB to 64 MB so large ZIP context payloads are never silently dropped.
+- Fixes file read race in context bundle collection: `statSync`/`readFileSync` pairs are now wrapped in try/catch so files removed between the two calls are added to `skipped` instead of crashing the request.
+- Fixes O(N²) task-mentioned file filter when building the prioritized file list; now uses a `Set` for O(1) membership checks.
+- Adds automatic cleanup of temp ZIP archives older than 4 hours so `os.tmpdir()/rel-ai-archives/` does not accumulate stale ZIPs across sessions.
+- Expands secret path blocking in both context bundle and patch apply to cover `.aws/`, `.azure/`, `gcloud/credentials`, `firebase-adminsdk*.json`, `service-account*.json`, `.npmrc`, `.pypirc`, and `.netrc`. Previously patchApply and contextBundle had divergent lists; they are now unified.
+- Fixes `stripQuotedPath` to decode git octal escape sequences (`\303\251` → `é`) so diffs against non-ASCII filenames pass path validation.
+- Improves the protocol version mismatch error to show both the version the extension sent and the version the host expects, making host/extension version skew easier to diagnose.
+- Fixes Gemini model validation to allow `/` so provider-namespaced model paths such as `models/gemini-pro` are accepted.
+- Adds Gemini API key validation for control characters and embedded whitespace before the key reaches the HTTP header.
+- Guards against `child.pid` being `undefined` when the OpenCode server process fails to assign a PID on spawn.
+- Fixes textarea composer insert to use the React-compatible native value setter so React's internal state is updated and the ChatGPT Send button is no longer left disabled after insertion.
+- Removes the dead `formatBytes` helper from popup.js (defined but never called).
+- Adds a try/catch around `atob()` in `base64ToBlob` so corrupted ZIP data shows a user-facing error instead of an unhandled exception.
+- Fixes `restoreDraft` to use the HTML element's `defaultValue` as the maxFiles fallback instead of a hardcoded `"15"`, so the dashboard's own `value="25"` default is respected on first use.
+- Adds `role` and `aria-live` attributes to the dashboard status element so error and success states are announced to screen readers.
 
 ### 0.9.43
 

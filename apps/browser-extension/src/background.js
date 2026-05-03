@@ -1559,7 +1559,11 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
       return { uploaded: false, uploadMethod: "none" };
     }
 
-    const fileObjects = fileItems.map(makeFile);
+    const uploadable = fileItems.filter((item) => String(item && item.base64 || "").length > 0);
+    if (uploadable.length === 0) {
+      return { uploaded: false, uploadMethod: "none", uploadError: "ZIP is too large to send inline. Download the generated ZIP and drag it into ChatGPT manually." };
+    }
+    const fileObjects = uploadable.map(makeFile);
     const result = await tryDragDropUpload(fileObjects, "main-world-drag-drop");
     if (result.uploaded) return result;
 
@@ -2053,11 +2057,12 @@ async function contextText(text, source, tabId) {
   const response = await sendNativeMessage(message);
 
   if (response && response.ok && response.bundle && typeof tabId === "number") {
-    const attachedFiles = response.contextMode === "zip" && response.archiveBase64
+    const attachedFiles = response.contextMode === "zip" && (response.archiveBase64 || response.archivePath)
       ? [{
         name: response.archiveName || "rel-ai-context.zip",
         mimeType: response.archiveMimeType || "application/zip",
-        base64: response.archiveBase64
+        base64: response.archiveBase64 || "",
+        path: response.archivePath || ""
       }]
       : [];
     const followUpPrompt = buildFollowUpContextPrompt(context, response);

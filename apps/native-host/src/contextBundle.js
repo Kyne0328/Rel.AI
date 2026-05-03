@@ -11,7 +11,7 @@ const DEFAULT_MAX_FILE_BYTES = 80000;
 const DEFAULT_PROJECT_TREE_ENTRIES = 800;
 const DEFAULT_FULL_REPO_MAX_FILES = 500;
 const FULL_REPO_SCOPE = "full";
-const MAX_ZIP_UPLOAD_BASE64_CHARS = 250000;
+const MAX_ZIP_UPLOAD_BASE64_CHARS = 32 * 1024 * 1024;
 const MAX_ZIP_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 const SECRET_PATH_PATTERNS = [
@@ -358,7 +358,7 @@ ${contextRequest.prompt}
 }
 function makeContextScopeGuidance(contextScope) {
   if (contextScope === "full") {
-    return "Context scope is Full repo upload (filtered): Rel.AI included safe Git-visible workspace files up to the configured limit while excluding ignored paths, dependency folders, build outputs, caches, logs, binaries, generated artifacts, and secret-looking paths. Treat skipped files as unavailable and ask for more context if needed.\n";
+    return "Context scope is Full repo upload (filtered): Rel.AI included safe Git-visible workspace files up to the configured limit while excluding ignored paths, dependency folders, build outputs, caches, logs, binaries, generated artifacts, secret-looking paths, and tech-stack-specific noise files (e.g. *.pyc, *.snap, *.class, DerivedData). Treat skipped files as unavailable and ask for more context if needed.\n";
   }
   if (contextScope === "selected") {
     return "Context scope is Selected only: Rel.AI included the selected files/folders/globs plus any safe task-mentioned files that already exist. Do not assume unselected file contents.\n";
@@ -374,6 +374,91 @@ function makeSkippedSection(skipped) {
   return text;
 }
 
+function detectStackExclusions(workspacePath) {
+  const extraDirs = new Set();
+  const extraFilePatterns = [];
+
+  let rootEntries;
+  try {
+    rootEntries = new Set(fs.readdirSync(workspacePath).map((e) => e.toLowerCase()));
+  } catch (_error) {
+    return { extraDirs, extraFilePatterns };
+  }
+
+  const has = (name) => rootEntries.has(name);
+  const hasSuffix = (suffix) => [...rootEntries].some((e) => e.endsWith(suffix));
+
+  const isNode = has("package.json") || has("package-lock.json") || has("yarn.lock") || has("pnpm-lock.yaml");
+  if (isNode) {
+    extraDirs.add(".nyc_output");
+    extraDirs.add("storybook-static");
+    extraDirs.add(".expo");
+    extraDirs.add(".yarn");
+    extraFilePatterns.push(/(^|\/).*\.snap$/i);
+  }
+
+  const isPython = has("requirements.txt") || has("pipfile") || has("pyproject.toml") || has("setup.py") || has("setup.cfg") || has("poetry.lock");
+  if (isPython) {
+    extraDirs.add(".eggs");
+    extraDirs.add(".tox");
+    extraDirs.add("htmlcov");
+    extraDirs.add(".nox");
+    extraFilePatterns.push(/(^|\/).*\.pyc$/i);
+    extraFilePatterns.push(/(^|\/).*\.pyo$/i);
+    extraFilePatterns.push(/(^|\/).*\.egg-info(\/|$)/i);
+  }
+
+  const isRust = has("cargo.toml");
+  if (isRust) {
+    extraFilePatterns.push(/(^|\/).*\.(rlib|rmeta)$/i);
+  }
+
+  const isJava = has("pom.xml") || has("build.gradle") || has("build.gradle.kts") || has("settings.gradle") || has("settings.gradle.kts") || has("gradlew");
+  if (isJava) {
+    extraDirs.add(".gradle");
+    extraFilePatterns.push(/(^|\/).*\.class$/i);
+    extraFilePatterns.push(/(^|\/).*\.(jar|war|ear|aar)$/i);
+  }
+
+  const isPhp = has("composer.json") || has("composer.lock");
+  if (isPhp) {
+    extraDirs.add("storage/logs");
+    extraDirs.add("storage/framework/cache");
+    extraDirs.add("bootstrap/cache");
+    extraDirs.add("public/build");
+  }
+
+  const isRuby = has("gemfile") || has("gemfile.lock") || has("rakefile");
+  if (isRuby) {
+    extraDirs.add(".bundle");
+    extraDirs.add("public/assets");
+    extraDirs.add("public/packs");
+  }
+
+  const isApple = has("podfile") || hasSuffix(".xcodeproj") || hasSuffix(".xcworkspace");
+  if (isApple) {
+    extraDirs.add("DerivedData");
+    extraDirs.add("xcuserdata");
+    extraFilePatterns.push(/(^|\/).*\.xcuserdata(\/|$)/i);
+  }
+
+  const isFlutter = has("pubspec.yaml") || has("pubspec.lock");
+  if (isFlutter) {
+    extraDirs.add(".dart_tool");
+    extraDirs.add(".flutter-plugins");
+    extraFilePatterns.push(/(^|\/).*\.(freezed|g)\.dart$/i);
+  }
+
+  const isDotNet = hasSuffix(".csproj") || hasSuffix(".sln") || hasSuffix(".vbproj") || hasSuffix(".fsproj");
+  if (isDotNet) {
+    extraDirs.add("bin");
+    extraDirs.add("obj");
+    extraFilePatterns.push(/(^|\/).*\.(exe|dll|pdb|nupkg)$/i);
+  }
+
+  return { extraDirs, extraFilePatterns };
+}
+
 function resolveRequestedFiles(workspacePath, include, exclude, options) {
   const realWorkspace = fs.realpathSync(workspacePath);
   const gitFiles = listGitVisibleFiles(realWorkspace);
@@ -383,8 +468,10 @@ function resolveRequestedFiles(workspacePath, include, exclude, options) {
   const selected = new Set();
 
   if (options.contextScope === FULL_REPO_SCOPE) {
+    const { extraDirs, extraFilePatterns } = detectStackExclusions(realWorkspace);
     for (const candidate of pool) {
-      if (!isExcluded(candidate, excludedMatchers)) {
+      if (!isExcluded(candidate, excludedMatchers)
+        && !isExtraExcluded(candidate, extraDirs, extraFilePatterns)) {
         selected.add(candidate);
       }
     }
@@ -774,6 +861,12 @@ function ensureInsideWorkspace(realWorkspace, absolutePath, label) {
 
 function isExcluded(candidate, matchers) {
   return matchers.some((matcher) => matcher(candidate));
+}
+
+function isExtraExcluded(candidate, extraDirs, extraFilePatterns) {
+  const parts = candidate.split("/").filter(Boolean);
+  if (parts.some((part) => extraDirs.has(part))) return true;
+  return extraFilePatterns.some((pattern) => pattern.test(candidate));
 }
 
 function isSecretPath(relativePath) {

@@ -88,25 +88,40 @@
     </section>
 
     <section class="actions">
-      <button id="contextLatest">Insert latest context request</button>
-      <button id="contextSelected">Insert context from selected text</button>
-      <button id="sendLatest">Apply latest patch block</button>
-      <button id="sendSelected">Apply selected patch text</button>
-      <button id="scan">Rescan page</button>
+      <button id="contextLatest"
+        title="Find the latest rel-ai-context request in the open ChatGPT tab, read the workspace files it asked for, and insert them into the ChatGPT composer.">
+        Provide latest context request
+      </button>
+      <button id="contextSelected"
+        title="Use your current ChatGPT page selection as a rel-ai-context request, then insert the requested workspace files into the composer.">
+        Provide context from selection
+      </button>
+      <button id="sendLatest"
+        title="Find the latest rel-ai-apply + diff blocks in the open ChatGPT tab and run git apply in your workspace. Shows a preview first.">
+        Apply latest patch block
+      </button>
+      <button id="sendSelected"
+        title="Use your current ChatGPT page selection as a patch and run git apply. Shows a preview first.">
+        Apply selected patch text
+      </button>
+      <button id="scan"
+        title="Force Rel.AI to re-scan the ChatGPT page and add inline Apply and context buttons to any new responses.">
+        Rescan page for Rel.AI blocks
+      </button>
     </section>
 
     <details>
-      <summary>Manual blocks</summary>
+      <summary>Manual paste tools</summary>
       <section>
-        <label for="contextManual">Manual rel-ai-context block</label>
+        <label for="contextManual">Paste a rel-ai-context block</label>
         <textarea id="contextManual" spellcheck="false" placeholder="Paste a ```rel-ai-context block here"></textarea>
-        <button id="sendContextManual">Insert manual context</button>
+        <button id="sendContextManual">Insert requested files into ChatGPT</button>
       </section>
 
       <section>
-        <label for="manual">Manual rel-ai-apply block</label>
+        <label for="manual">Paste a rel-ai-apply block</label>
         <textarea id="manual" spellcheck="false" placeholder="Paste metadata + diff blocks, raw JSON, or unified diff here"></textarea>
-        <button id="sendManual">Apply manual patch</button>
+        <button id="sendManual">Apply patch from pasted text</button>
       </section>
     </details>
 
