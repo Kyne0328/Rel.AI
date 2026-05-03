@@ -226,13 +226,14 @@
     const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.");
     const include = validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS);
     const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
-    if (include.length === 0) {
-      throw new Error("include must contain at least one file, directory, or safe glob. Entire workspace reads are blocked.");
+    const contextScope = validateContextScope(candidate.contextScope || candidate.scope);
+    if (include.length === 0 && contextScope !== "full") {
+      throw new Error("include must contain at least one file, directory, or safe glob unless contextScope is 'full'.");
     }
 
     const maxFiles = optionalPositiveInteger(candidate.maxFiles, "maxFiles must be a positive integer when provided.");
     const maxChars = optionalPositiveInteger(candidate.maxChars, "maxChars must be a positive integer when provided.");
-    const contextMode = validateContextMode(candidate.contextMode || candidate.bundleMode);
+    const contextMode = contextScope === "full" ? "zip" : validateContextMode(candidate.contextMode || candidate.bundleMode);
 
     return {
       version: CONTEXT_VERSION,
@@ -240,6 +241,7 @@
       ...(prompt ? { prompt: prompt.slice(0, 8000) } : {}),
       include,
       contextMode,
+      contextScope,
       ...(exclude.length ? { exclude } : {}),
       ...(maxFiles ? { maxFiles } : {}),
       ...(maxChars ? { maxChars } : {})
@@ -259,6 +261,17 @@
   }
   throw new Error("contextMode must be 'readable' or 'zip'.");
 }
+
+  function validateContextScope(value) {
+    if (value === undefined || value === null || value === "") {
+      return "focused";
+    }
+    const scope = requireString(value, "contextScope must be a string when provided.").trim().toLowerCase();
+    if (["focused", "selected", "full"].includes(scope)) {
+      return scope;
+    }
+    throw new Error("contextScope must be 'focused', 'selected', or 'full'.");
+  }
 
 function validateFallback(value) {
     if (value === undefined || value === null) {

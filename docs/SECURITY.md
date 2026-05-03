@@ -8,7 +8,7 @@ Rel.AI treats ChatGPT output as untrusted. This includes both patch requests and
 - Paths must be relative.
 - Path traversal is rejected.
 - Common sensitive paths are blocked.
-- Workspace context reads require explicit include patterns.
+- Normal workspace context reads require explicit include patterns; full repo archive must be explicitly selected and is still filtered.
 - Context bundles are inserted into ChatGPT for review before sending.
 - Context glob/directory reads use git ignored-file rules when possible.
 - Direct test commands from ChatGPT are disabled by default.
@@ -20,7 +20,7 @@ Rel.AI treats ChatGPT output as untrusted. This includes both patch requests and
 
 ChatGPT cannot silently read your local files. It can only produce a `rel-ai-context` request. You must click the Rel.AI button before files are read. Rel.AI then inserts the bundle into the composer instead of auto-submitting it.
 
-Entire workspace reads are blocked. Use explicit files, directories, or narrow globs.
+Silent entire-workspace reads are blocked. Use explicit files, directories, or narrow globs for normal work. Full repo archive mode is available as an advanced option, but it still respects Git ignored-file rules, exclude patterns, binary detection, file limits, and secret-path blocking.
 
 ## Sensitive paths blocked
 

@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.28";
+const EXTENSION_VERSION = "0.9.32";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;
@@ -48,6 +48,7 @@ function summarizeMessageForDebug(message) {
     summary.context = {
       workspace: message.context.workspace,
       contextMode: message.context.contextMode,
+      contextScope: message.context.contextScope,
       includeCount: Array.isArray(message.context.include) ? message.context.include.length : undefined,
       maxFiles: message.context.maxFiles,
       maxChars: message.context.maxChars
@@ -315,6 +316,7 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
   relaiLog("compose.native.response", {
     ok: Boolean(response && response.ok),
     contextMode: response && response.contextMode,
+    contextScope: response && response.contextScope,
     fileCount: response && response.fileCount,
     archiveName: response && response.archiveName,
     archivePath: response && response.archivePath,
@@ -373,6 +375,7 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
     fileCount: response.fileCount || 0,
     totalChars: response.totalChars || 0,
     contextMode: response.contextMode || context.contextMode || "readable",
+    contextScope: response.contextScope || context.contextScope || "focused",
     zipBytes: response.zipBytes || 0,
     base64Chars: response.base64Chars || 0,
     archiveName: response.archiveName || "",
@@ -1621,12 +1624,15 @@ function buildChatGPTRequestPrompt(context, task, response) {
 
 Workspace alias: ${workspace}
 Context mode: ${contextMode}
+Context scope: ${response.contextScope || context.contextScope || "focused"}
 ${taskFileNote}
 Task:
 ${userPrompt}
 
 Instructions for your response:
 - Inspect the attached/readable workspace context before producing a patch. Treat it as the current repository state.
+- Use the compact project file tree to preserve exact path casing and determine whether files already exist.
+- File-tree entries prove paths exist, but they do not provide contents unless the file is also included in the readable context or ZIP manifest.
 - Produce code changes as a unified git diff that applies cleanly with git apply --check.
 - Do NOT put the diff inside a JSON string. Raw multiline diffs inside JSON break parsing.
 - When ready to apply, reply with exactly two fenced code blocks and no extra prose:
@@ -1655,7 +1661,8 @@ Patch correctness rules:
 - Use the exact file path and filename casing shown in the manifest/context. For example, do not use readme.md if the manifest says README.md.
 - Before creating a file with /dev/null or new file mode, verify that the file is absent from the context, manifest, and task-mentioned file check.
 - If a file already exists, modify it with a normal diff; do not mark it as a new file.
-- If a required file is mentioned by the task but missing from the manifest/context, reply with a \`\`\`rel-ai-context block asking for that file instead of creating a guessed file.
+- If a required file is mentioned by the task but missing from the manifest/context, or if it appears only in the file tree without contents, reply with a \`\`\`rel-ai-context block asking for that file instead of creating a guessed file.
+- If broad repository context is required, ask for full repo archive mode only when narrower follow-up context is insufficient.
 `;
 
   if (contextMode === "zip") {

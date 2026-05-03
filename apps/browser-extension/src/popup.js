@@ -9,6 +9,7 @@ const includePathsEl = document.getElementById("includePaths");
 const excludePathsEl = document.getElementById("excludePaths");
 const maxFilesEl = document.getElementById("maxFiles");
 const maxCharsEl = document.getElementById("maxChars");
+const contextScopeEl = document.getElementById("contextScope");
 const contextModeEl = document.getElementById("contextMode");
 const testCommandKeyEl = document.getElementById("testCommandKey");
 const testCommandManualEl = document.getElementById("testCommandManual");
@@ -87,7 +88,20 @@ testCommandKeyEl.addEventListener("change", () => {
   }
 });
 
-for (const el of [workspaceManualEl, taskPromptEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl]) {
+if (contextScopeEl) {
+  contextScopeEl.addEventListener("change", () => {
+    if (contextScopeEl.value === "full") {
+      contextModeEl.value = "zip";
+      const currentMaxFiles = positiveInteger(maxFilesEl.value) || 0;
+      if (currentMaxFiles < 200) {
+        maxFilesEl.value = "300";
+      }
+    }
+    saveDraft();
+  });
+}
+
+for (const el of [workspaceManualEl, taskPromptEl, includePathsEl, excludePathsEl, maxFilesEl, maxCharsEl, contextScopeEl, contextModeEl, testCommandManualEl, fallbackEnabledEl, autoSubmitEl]) {
   el.addEventListener("change", saveDraft);
   el.addEventListener("input", debounce(saveDraft, 300));
 }
@@ -182,11 +196,13 @@ async function composeRequest() {
   const testCommandKey = clean(testCommandManualEl.value || testCommandKeyEl.value);
   const maxFiles = positiveInteger(maxFilesEl.value);
   const maxChars = positiveInteger(maxCharsEl.value);
-  const contextMode = clean(contextModeEl.value) || "readable";
+  const contextScope = clean(contextScopeEl && contextScopeEl.value) || "focused";
+  const contextMode = contextScope === "full" ? "zip" : (clean(contextModeEl.value) || "readable");
 
   dashboardLog("compose.validate.start", {
     workspace,
     promptLength: prompt.length,
+    contextScope,
     includeCount: include.length,
     excludeCount: exclude.length,
     testCommandKey,
@@ -203,9 +219,9 @@ async function composeRequest() {
     dashboardLog("compose.validate.fail", { reason: "missing_prompt" });
     throw new Error("Type what you want ChatGPT to do.");
   }
-  if (include.length === 0) {
+  if (include.length === 0 && contextScope !== "full") {
     dashboardLog("compose.validate.fail", { reason: "missing_include_paths" });
-    throw new Error("Choose at least one allowed file, folder, or glob.");
+    throw new Error("Choose at least one allowed file, folder, or glob, or switch Context scope to Full repo archive.");
   }
 
   const contextRequest = {
@@ -216,7 +232,8 @@ async function composeRequest() {
     ...(exclude.length ? { exclude } : {}),
     ...(maxFiles ? { maxFiles } : {}),
     ...(maxChars ? { maxChars } : {}),
-    contextMode
+    contextMode,
+    contextScope
   };
 
   await saveDraft();
@@ -224,6 +241,7 @@ async function composeRequest() {
   dashboardLog("compose.send", {
     workspace,
     contextMode,
+    contextScope,
     includeCount: include.length,
     excludeCount: exclude.length,
     fallbackEnabled: Boolean(fallbackEnabledEl.checked),
@@ -419,6 +437,7 @@ function summarizeDashboardState() {
     includeCount: lines(includePathsEl && includePathsEl.value || "").length,
     excludeCount: lines(excludePathsEl && excludePathsEl.value || "").length,
     contextMode: clean(contextModeEl && contextModeEl.value),
+    contextScope: clean(contextScopeEl && contextScopeEl.value),
     maxFiles: maxFilesEl && maxFilesEl.value,
     maxChars: maxCharsEl && maxCharsEl.value,
     testCommandKey: clean(testCommandManualEl && testCommandManualEl.value || testCommandKeyEl && testCommandKeyEl.value),
@@ -704,6 +723,7 @@ async function saveDraft() {
   const draft = {
     workspace: workspaceManualEl.value,
     prompt: taskPromptEl.value,
+    contextScope: contextScopeEl ? contextScopeEl.value : "focused",
     include: includePathsEl.value,
     exclude: excludePathsEl.value,
     maxFiles: maxFilesEl.value,
@@ -719,6 +739,7 @@ async function saveDraft() {
 function restoreDraft(draft) {
   workspaceManualEl.value = draft.workspace || "";
   taskPromptEl.value = draft.prompt || "";
+  if (contextScopeEl) contextScopeEl.value = draft.contextScope || "focused";
   includePathsEl.value = draft.include || "";
   excludePathsEl.value = draft.exclude || "";
   maxFilesEl.value = draft.maxFiles || "15";

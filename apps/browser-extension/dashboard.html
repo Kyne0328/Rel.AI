@@ -43,6 +43,14 @@
       <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Describe the change you want. Rel.AI will attach selected context and ask ChatGPT to produce an apply block plus a unified diff that matches the current files."></textarea>
 
 
+      <label for="contextScope">Context scope</label>
+      <select id="contextScope">
+        <option value="focused">Focused (recommended): file tree + selected context + task-mentioned files</option>
+        <option value="selected">Selected only: file tree + explicitly selected files/folders</option>
+        <option value="full">Full repo archive (advanced/slow): safe Git-visible workspace files</option>
+      </select>
+      <p class="small-note">Focused mode is fastest. Full repo archive ignores the include list, respects Git ignore rules and secret blocking, and should be used only when the task genuinely needs broad repository context.</p>
+
       <label for="includePaths">Files and folders to include</label>
       <textarea id="includePaths" spellcheck="false" placeholder="src/auth.ts&#10;src/session.ts&#10;tests/**/*.test.ts"></textarea>
 
@@ -67,7 +75,7 @@
       <div class="grid-2">
         <label>
           Max files
-          <input id="maxFiles" type="number" min="1" max="50" value="15">
+          <input id="maxFiles" type="number" min="1" max="1000" value="25">
         </label>
         <label>
           Max chars
@@ -80,7 +88,7 @@
         <option value="readable">Readable context</option>
         <option value="zip">ZIP attachment</option>
       </select>
-      <p class="small-warning">ZIP attachment keeps the prompt short by attaching a real archive and inserting only instructions plus a manifest. Use readable context for smaller, highly targeted requests.</p>
+      <p class="small-warning">ZIP attachment keeps the prompt short by attaching a real archive and inserting only instructions plus a manifest. Full repo archive mode always uses ZIP attachment.</p>
 
       <label for="testCommandKey">Test command key, optional</label>
       <select id="testCommandKey"></select>

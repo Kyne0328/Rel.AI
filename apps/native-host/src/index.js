@@ -33,6 +33,7 @@ startNativeMessagingLoop(process.stdin, process.stdout, async (rawMessage) => {
         workspaces: summarizeWorkspaces(config),
         limits: {
           maxContextFiles: config.maxContextFiles,
+          maxFullRepoFiles: config.maxFullRepoFiles,
           maxContextChars: config.maxContextChars,
           maxContextFileBytes: config.maxContextFileBytes,
           maxDiffChars: config.maxDiffChars,

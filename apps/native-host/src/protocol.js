@@ -139,16 +139,19 @@ function validateContextRequest(value, config) {
   const prompt = optionalString(candidate.prompt, "Context prompt must be a string when provided.");
   const include = validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS);
   const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
+  const contextScope = validateContextScope(candidate.contextScope || candidate.scope);
 
-  if (include.length === 0) {
-    throw new Error("Context request must include at least one explicit file, directory, or safe glob. Entire workspace reads are blocked.");
+  if (include.length === 0 && contextScope !== "full") {
+    throw new Error("Context request must include at least one explicit file, directory, or safe glob unless contextScope is 'full'.");
   }
 
   const maxFiles = optionalPositiveInteger(candidate.maxFiles, "maxFiles must be a positive integer when provided.");
   const maxChars = optionalPositiveInteger(candidate.maxChars, "maxChars must be a positive integer when provided.");
-  const contextMode = validateContextMode(candidate.contextMode || candidate.bundleMode);
+  const contextMode = contextScope === "full" ? "zip" : validateContextMode(candidate.contextMode || candidate.bundleMode);
 
-  const hardMaxFiles = config && Number.isInteger(config.maxContextFiles) ? config.maxContextFiles : 25;
+  const hardMaxFiles = contextScope === "full"
+    ? (config && Number.isInteger(config.maxFullRepoFiles) ? config.maxFullRepoFiles : 500)
+    : (config && Number.isInteger(config.maxContextFiles) ? config.maxContextFiles : 25);
   const hardMaxChars = config && Number.isInteger(config.maxContextChars) ? config.maxContextChars : 120000;
 
   return {
@@ -157,6 +160,7 @@ function validateContextRequest(value, config) {
     ...(prompt ? { prompt: prompt.slice(0, 8000) } : {}),
     include,
     contextMode,
+    contextScope,
     ...(exclude.length ? { exclude } : {}),
     maxFiles: Math.min(maxFiles || hardMaxFiles, hardMaxFiles),
     maxChars: Math.min(maxChars || hardMaxChars, hardMaxChars)
@@ -175,6 +179,17 @@ function validateContextMode(value) {
     return "zip";
   }
   throw new Error("contextMode must be 'readable' or 'zip'.");
+}
+
+function validateContextScope(value) {
+  if (value === undefined || value === null || value === "") {
+    return "focused";
+  }
+  const scope = requireString(value, "contextScope must be a string when provided.").trim().toLowerCase();
+  if (["focused", "selected", "full"].includes(scope)) {
+    return scope;
+  }
+  throw new Error("contextScope must be 'focused', 'selected', or 'full'.");
 }
 
 function validateFallback(value) {
@@ -289,6 +304,7 @@ function makeResponse(input) {
     ...(input.fileCount !== undefined ? { fileCount: input.fileCount } : {}),
     ...(input.totalChars !== undefined ? { totalChars: input.totalChars } : {}),
     ...(input.contextMode ? { contextMode: input.contextMode } : {}),
+    ...(input.contextScope ? { contextScope: input.contextScope } : {}),
     ...(input.archiveEncoding ? { archiveEncoding: input.archiveEncoding } : {}),
     ...(input.archiveName ? { archiveName: input.archiveName } : {}),
     ...(input.archivePath ? { archivePath: input.archivePath } : {}),

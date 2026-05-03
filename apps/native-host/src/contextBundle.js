@@ -8,6 +8,7 @@ const DEFAULT_MAX_CONTEXT_FILES = 25;
 const DEFAULT_MAX_CONTEXT_CHARS = 120000;
 const DEFAULT_MAX_FILE_BYTES = 80000;
 const DEFAULT_PROJECT_TREE_ENTRIES = 800;
+const DEFAULT_FULL_REPO_MAX_FILES = 500;
 const MAX_ZIP_UPLOAD_BASE64_CHARS = 250000;
 const MAX_ZIP_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -45,20 +46,25 @@ const BINARY_EXTENSIONS = new Set([
 ]);
 
 function buildContextBundle(contextRequest, workspace, config) {
-  const maxFiles = getInteger(contextRequest.maxFiles, getInteger(config.maxContextFiles, DEFAULT_MAX_CONTEXT_FILES));
-  const maxChars = getInteger(contextRequest.maxChars, getInteger(config.maxContextChars, DEFAULT_MAX_CONTEXT_CHARS));
-  const maxFileBytes = getInteger(config.maxContextFileBytes, DEFAULT_MAX_FILE_BYTES);
-  const contextMode = normalizeContextMode(contextRequest.contextMode || contextRequest.bundleMode || "readable");
+  const contextScope = normalizeContextScope(contextRequest.contextScope || contextRequest.scope || "focused");
+  const defaultMaxFiles = contextScope === "full"
+    ? getInteger(config && config.maxFullRepoFiles, DEFAULT_FULL_REPO_MAX_FILES)
+    : getInteger(config && config.maxContextFiles, DEFAULT_MAX_CONTEXT_FILES);
+  const maxFiles = getInteger(contextRequest.maxFiles, defaultMaxFiles);
+  const maxChars = getInteger(contextRequest.maxChars, getInteger(config && config.maxContextChars, DEFAULT_MAX_CONTEXT_CHARS));
+  const maxFileBytes = getInteger(config && config.maxContextFileBytes, DEFAULT_MAX_FILE_BYTES);
+  const contextMode = contextScope === "full" ? "zip" : normalizeContextMode(contextRequest.contextMode || contextRequest.bundleMode || "readable");
 
   const include = Array.isArray(contextRequest.include) ? contextRequest.include : [];
-  if (include.length === 0) {
-    throw new Error("Context request must include explicit files or safe globs. Refusing to dump the entire workspace.");
+  if (include.length === 0 && contextScope !== "full") {
+    throw new Error("Context request must include explicit files or safe globs unless full repo archive mode is selected.");
   }
 
   const resolution = resolveRequestedFiles(workspace.path, include, contextRequest.exclude || [], {
     maxFiles,
     maxFileBytes,
     prompt: contextRequest.prompt || "",
+    contextScope,
     maxProjectTreeEntries: getInteger(config && config.maxProjectTreeEntries, DEFAULT_PROJECT_TREE_ENTRIES)
   });
   const files = resolution.files;
@@ -73,10 +79,10 @@ function buildContextBundle(contextRequest, workspace, config) {
   }
 
   if (contextMode === "zip") {
-    return buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, resolution.taskMentionedFiles, resolution.projectTree);
+    return buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, resolution.taskMentionedFiles, resolution.projectTree, contextScope);
   }
 
-  return buildReadableContextBundle(contextRequest, workspace, collected, maxChars, resolution.taskMentionedFiles, resolution.projectTree);
+  return buildReadableContextBundle(contextRequest, workspace, collected, maxChars, resolution.taskMentionedFiles, resolution.projectTree, contextScope);
 }
 
 function collectReadableFiles(files, workspacePath, maxFileBytes) {
@@ -106,7 +112,7 @@ function collectReadableFiles(files, workspacePath, maxFileBytes) {
   return { included, skipped, totalChars };
 }
 
-function buildReadableContextBundle(contextRequest, workspace, collected, maxChars, taskMentionedFiles, projectTree) {
+function buildReadableContextBundle(contextRequest, workspace, collected, maxChars, taskMentionedFiles, projectTree, contextScope) {
   const included = [];
   const skipped = [...collected.skipped];
   let totalChars = 0;
@@ -143,6 +149,7 @@ function buildReadableContextBundle(contextRequest, workspace, collected, maxCha
     ok: true,
     type: "relai.context",
     contextMode: "readable",
+    contextScope,
     workspace: workspace.alias,
     fileCount: included.length,
     totalChars,
@@ -154,7 +161,7 @@ function buildReadableContextBundle(contextRequest, workspace, collected, maxCha
   };
 }
 
-function buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, taskMentionedFiles, projectTree) {
+function buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, taskMentionedFiles, projectTree, contextScope) {
   const archiveFiles = collected.included.map((file) => ({
     path: file.path,
     data: Buffer.from(file.content, "utf8")
@@ -182,8 +189,9 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
   const archiveName = `rel-ai-${safeTask}.zip`;
   const archivePath = writeTempArchive(archiveName, zip);
 
-  let bundle = makeBundleHeader(contextRequest, workspace);
-  bundle += "The selected workspace context is attached as a real ZIP file named `" + archiveName + "`.\n";
+  let bundle = makeBundleHeader(contextRequest, workspace, contextScope);
+  bundle += makeContextScopeGuidance(contextScope);
+  bundle += (contextScope === "full" ? "The safe full-repo workspace context is attached as a real ZIP file named `" : "The selected workspace context is attached as a real ZIP file named `") + archiveName + "`.\n";
   bundle += "Use the uploaded ZIP contents as the source context. Do not ask the user to paste the archive contents unless the upload is unavailable.\n";
   bundle += "Use the project file tree below to preserve exact path casing and avoid duplicate files. Files listed only in the tree are not full file contents; if you need their contents, ask for them.\n";
   bundle += "If you cannot inspect the attached ZIP, ask the user to resend in Readable text mode or select a narrower file list. Do not invent code from the manifest alone.\n\n";
@@ -193,6 +201,7 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
   bundle += JSON.stringify({
     format: "rel-ai-context-zip-upload",
     workspace: workspace.alias,
+    contextScope,
     archiveName,
     fileCount: manifest.length,
     originalChars,
@@ -223,6 +232,7 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
     ok: true,
     type: "relai.context",
     contextMode: "zip",
+    contextScope,
     archiveEncoding: "zip-upload",
     archiveName,
     archivePath,
@@ -254,9 +264,10 @@ function writeTempArchive(archiveName, buffer) {
   return archivePath;
 }
 
-function makeBundleHeader(contextRequest, workspace) {
+function makeBundleHeader(contextRequest, workspace, contextScope) {
   let header = `Rel.AI workspace context
 Workspace alias: ${workspace.alias}
+Context scope: ${contextScope || "focused"}
 `;
   if (contextRequest.prompt) {
     header += `Task:
@@ -266,6 +277,16 @@ ${contextRequest.prompt}
   return `${header}
 `;
 }
+function makeContextScopeGuidance(contextScope) {
+  if (contextScope === "full") {
+    return "Context scope is Full repo archive: Rel.AI included safe Git-visible workspace files up to the configured limit while excluding ignored directories, binary files, and secret-looking paths. Treat skipped files as unavailable and ask for more context if needed.\n";
+  }
+  if (contextScope === "selected") {
+    return "Context scope is Selected only: Rel.AI included the selected files/folders/globs plus any safe task-mentioned files that already exist. Do not assume unselected file contents.\n";
+  }
+  return "Context scope is Focused: Rel.AI included the compact project tree, selected context, and safe task-mentioned files that already exist. Ask for more context if the required contents are missing.\n";
+}
+
 function makeSkippedSection(skipped) {
   let text = "\nSkipped files:\n";
   for (const item of skipped.slice(0, 50)) {
@@ -281,35 +302,43 @@ function resolveRequestedFiles(workspacePath, include, exclude, options) {
   const excludedMatchers = exclude.map(makeMatcher);
   const selected = new Set();
 
-  for (const pattern of include) {
-    const normalized = normalizeRequestPath(pattern);
-    const matcher = makeMatcher(normalized);
-    const isGlob = hasGlob(normalized) || normalized.endsWith("/") || normalized.endsWith("/**");
-
-    if (isGlob) {
-      for (const candidate of pool) {
-        if (matcher(candidate) && !isExcluded(candidate, excludedMatchers)) {
-          selected.add(candidate);
-        }
+  if (options.contextScope === "full") {
+    for (const candidate of pool) {
+      if (!isExcluded(candidate, excludedMatchers)) {
+        selected.add(candidate);
       }
-      continue;
     }
+  } else {
+    for (const pattern of include) {
+      const normalized = normalizeRequestPath(pattern);
+      const matcher = makeMatcher(normalized);
+      const isGlob = hasGlob(normalized) || normalized.endsWith("/") || normalized.endsWith("/**");
 
-    const absolute = path.resolve(realWorkspace, normalized);
-    ensureInsideWorkspace(realWorkspace, absolute, normalized);
-
-    if (fs.existsSync(absolute) && fs.statSync(absolute).isDirectory()) {
-      const dirPrefix = normalized.replace(/\/+$/g, "") + "/";
-      for (const candidate of pool) {
-        if (candidate.startsWith(dirPrefix) && !isExcluded(candidate, excludedMatchers)) {
-          selected.add(candidate);
+      if (isGlob) {
+        for (const candidate of pool) {
+          if (matcher(candidate) && !isExcluded(candidate, excludedMatchers)) {
+            selected.add(candidate);
+          }
         }
+        continue;
       }
-      continue;
-    }
 
-    if (pool.includes(normalized) && !isExcluded(normalized, excludedMatchers)) {
-      selected.add(normalized);
+      const absolute = path.resolve(realWorkspace, normalized);
+      ensureInsideWorkspace(realWorkspace, absolute, normalized);
+
+      if (fs.existsSync(absolute) && fs.statSync(absolute).isDirectory()) {
+        const dirPrefix = normalized.replace(/\/+$/g, "") + "/";
+        for (const candidate of pool) {
+          if (candidate.startsWith(dirPrefix) && !isExcluded(candidate, excludedMatchers)) {
+            selected.add(candidate);
+          }
+        }
+        continue;
+      }
+
+      if (pool.includes(normalized) && !isExcluded(normalized, excludedMatchers)) {
+        selected.add(normalized);
+      }
     }
   }
 
@@ -763,6 +792,14 @@ function makeCrcTable() {
     table[i] = c >>> 0;
   }
   return table;
+}
+
+function normalizeContextScope(value) {
+  const scope = String(value || "focused").trim().toLowerCase();
+  if (["focused", "selected", "full"].includes(scope)) {
+    return scope;
+  }
+  return "focused";
 }
 
 function normalizeContextMode(value) {

@@ -27,6 +27,7 @@ function defaultConfig() {
     maxPromptChars: 120000,
     maxDiffChars: 500000,
     maxContextFiles: 25,
+    maxFullRepoFiles: 500,
     maxContextChars: 120000,
     maxContextFileBytes: 80000,
     allowDirectTestCommands: false,
@@ -114,6 +115,9 @@ function normalizeConfig(config) {
     maxContextFiles: Number.isInteger(candidate.maxContextFiles) && candidate.maxContextFiles >= 1
       ? candidate.maxContextFiles
       : base.maxContextFiles,
+    maxFullRepoFiles: Number.isInteger(candidate.maxFullRepoFiles) && candidate.maxFullRepoFiles >= 1
+      ? candidate.maxFullRepoFiles
+      : base.maxFullRepoFiles,
     maxContextChars: Number.isInteger(candidate.maxContextChars) && candidate.maxContextChars >= 1000
       ? candidate.maxContextChars
       : base.maxContextChars,
