@@ -2,7 +2,7 @@ const PROTOCOL_VERSION = 7;
 const APPLY_VERSION = 1;
 const CONTEXT_VERSION = 1;
 const MAX_CONTEXT_FILES = 50;
-const MAX_CONTEXT_PATTERNS = 50;
+const MAX_CONTEXT_PATTERNS = 300;
 
 function validateNativeMessage(value, config) {
   const candidate = requireObject(value, "Message must be a JSON object.");
@@ -197,8 +197,11 @@ function validateContextRequest(value, config) {
 
   const workspace = validateWorkspaceAlias(candidate.workspace, "Context workspace");
   optionalString(candidate.title, "Context title must be a string when provided.");
-  const prompt = optionalString(candidate.prompt, "Context prompt must be a string when provided.");
-  const include = validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS);
+  const prompt = optionalString(candidate.prompt, "Context prompt must be a string when provided.")
+    || optionalString(candidate.reason, "Context reason must be a string when provided.")
+    || optionalString(candidate.acceptableAlternative, "Context acceptableAlternative must be a string when provided.");
+  const includeSource = Array.isArray(candidate.include) ? candidate.include : candidate.neededFiles;
+  const include = validatePathArray(includeSource, Array.isArray(candidate.include) ? "include" : "neededFiles", MAX_CONTEXT_PATTERNS);
   const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
   const contextScope = validateContextScope(candidate.contextScope || candidate.scope);
 

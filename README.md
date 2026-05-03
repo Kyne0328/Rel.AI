@@ -461,6 +461,20 @@ Patch request:
 
 ## Version history
 
+### v0.9.38
+
+- Follow-up `rel-ai-context` requests now inherit the original request packing mode by workspace. If the original request used ZIP mode, requested follow-up files are returned as a ZIP; if it used readable text, follow-up files are returned as readable text.
+- Generated prompts now tell ChatGPT to keep the same `contextMode` when asking for more context.
+- Bumps package and extension versions to `0.9.38`.
+
+### v0.9.37
+
+- Detects raw JSON context requests that use `neededFiles` instead of `include`.
+- Shows **Provide requested files** for ChatGPT responses that are not fenced as `rel-ai-context` but clearly request more workspace files.
+- Maps `neededFiles` into the normal Rel.AI context include list before sending to the native host.
+- Raises the context request pattern limit so larger follow-up file lists can be parsed.
+- Bumps package and extension versions to `0.9.37`.
+
 ### v0.9.36
 
 - Improves `rel-ai-context` follow-up UX with a clear **Provide requested files** inline action.

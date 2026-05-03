@@ -1,8 +1,9 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.36";
+const EXTENSION_VERSION = "0.9.38";
 const DEBUG_LOG_KEY = "relaiDebugLog";
+const LAST_CONTEXT_PREFS_KEY = "relaiLastContextPreferences";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;
 
@@ -340,6 +341,8 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
   if (!response || !response.ok || !response.bundle) {
     return response || { ok: false, error: "Could not load workspace context." };
   }
+
+  await rememberContextPreference(context, response);
 
   if (context.contextMode === "zip") {
     const hasArchive = response.contextMode === "zip" && (response.archiveBase64 || response.archivePath);
@@ -1666,6 +1669,7 @@ Context and correctness rules:
 - Use the compact project file tree to preserve exact path casing and determine whether files already exist.
 - File-tree entries prove paths exist, but they do not provide contents unless the file is also included in the readable context or ZIP manifest.
 - If a required file is mentioned by the task but missing from the manifest/context, or if it appears only in the file tree without contents, immediately reply with a \`\`\`rel-ai-context block asking for that file instead of guessing. Do this automatically; do not wait for the user to ask you to request more context.
+- When replying with rel-ai-context, use the same contextMode as this request: "${contextMode}". If this request used ZIP context, the follow-up context should also be ZIP. If this request used readable text, the follow-up should also be readable text.
 - If broad repository context is required, ask for full repo upload mode only when narrower follow-up context is insufficient.
 - Keep paths relative to the workspace.
 - Do not include absolute paths or ../ paths.
@@ -1887,7 +1891,7 @@ function extractRelAiTextInPage(kind, mode) {
     const raw = String(text || "");
     if (kind === "context") {
       return /```(?:rel-ai-context|relai-context|rel-ai-source|relai-source)/i.test(raw)
-        || (/"version"\s*:\s*1/.test(raw) && /"include"\s*:/.test(raw));
+        || (/"version"\s*:\s*1/.test(raw) && (/"include"\s*:/.test(raw) || /"neededFiles"\s*:/.test(raw)));
     }
     return /```(?:rel-ai-apply|relai-apply|rel-ai-diff|relai-diff|rel-ai-patch|diff|json)/i.test(raw)
       || (/"version"\s*:\s*1/.test(raw) && (/"diff"\s*:/.test(raw) || /"workspace"\s*:/.test(raw)))
@@ -1975,7 +1979,8 @@ async function applyText(text, source, options) {
 }
 
 async function contextText(text, source, tabId) {
-  const context = RelAiProtocol.parseContextFromText(text);
+  const parsedContext = RelAiProtocol.parseContextFromText(text);
+  const context = await applyRememberedContextPreference(parsedContext, text, source);
   const message = RelAiProtocol.makeContextMessage(context, `browser:${source}`);
   const response = await sendNativeMessage(message);
 
@@ -2001,6 +2006,90 @@ async function contextText(text, source, tabId) {
   }
 
   return response;
+}
+
+
+async function rememberContextPreference(context, response) {
+  const workspace = String((response && response.workspace) || (context && context.workspace) || "").trim();
+  if (!workspace) return;
+  const contextMode = String((response && response.contextMode) || (context && context.contextMode) || "readable").trim().toLowerCase() === "zip" ? "zip" : "readable";
+  const contextScope = String((response && response.contextScope) || (context && context.contextScope) || "focused").trim().toLowerCase() || "focused";
+  await storageLocalUpdate(LAST_CONTEXT_PREFS_KEY, (current) => {
+    const prefs = current && typeof current === "object" && !Array.isArray(current) ? current : {};
+    return {
+      ...prefs,
+      [workspace]: {
+        workspace,
+        contextMode,
+        contextScope,
+        updatedAt: new Date().toISOString(),
+        source: "compose-request"
+      }
+    };
+  });
+  relaiLog("context.preference.remembered", { workspace, contextMode, contextScope });
+}
+
+async function applyRememberedContextPreference(context, originalText, source) {
+  if (!context || typeof context !== "object") return context;
+  const workspace = String(context.workspace || "").trim();
+  if (!workspace) return context;
+  if (contextRequestDeclaresPacking(originalText)) {
+    return context;
+  }
+
+  const prefs = await storageLocalGetValue(LAST_CONTEXT_PREFS_KEY, {});
+  const pref = prefs && typeof prefs === "object" ? prefs[workspace] : null;
+  if (!pref || !pref.contextMode) {
+    return context;
+  }
+
+  const inheritedMode = String(pref.contextMode).toLowerCase() === "zip" ? "zip" : "readable";
+  if (context.contextMode === inheritedMode) {
+    return context;
+  }
+
+  relaiLog("context.preference.inherited", {
+    workspace,
+    source,
+    fromContextMode: context.contextMode,
+    inheritedContextMode: inheritedMode,
+    preferenceUpdatedAt: pref.updatedAt
+  });
+
+  return {
+    ...context,
+    contextMode: inheritedMode
+  };
+}
+
+function contextRequestDeclaresPacking(text) {
+  const raw = String(text || "");
+  return /["']contextMode["']\s*:|["']bundleMode["']\s*:|["']contextScope["']\s*:\s*["']full["']|["']scope["']\s*:\s*["']full["']/i.test(raw);
+}
+
+function storageLocalGetValue(key, defaultValue) {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get({ [key]: defaultValue }, (stored) => resolve(stored && stored[key] !== undefined ? stored[key] : defaultValue));
+    } catch (_error) {
+      resolve(defaultValue);
+    }
+  });
+}
+
+function storageLocalUpdate(key, updater) {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get({ [key]: undefined }, (stored) => {
+        const current = stored ? stored[key] : undefined;
+        const next = updater(current);
+        chrome.storage.local.set({ [key]: next }, () => resolve(next));
+      });
+    } catch (_error) {
+      resolve(undefined);
+    }
+  });
 }
 
 function sendNativeMessage(message) {

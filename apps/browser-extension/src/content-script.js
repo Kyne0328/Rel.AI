@@ -753,7 +753,10 @@
 
   function looksLikeContextBlock(text) {
     const parsed = parseJsonObjectFromBlockText(text);
-    return Boolean(parsed && parsed.version === 1 && typeof parsed.workspace === "string" && Array.isArray(parsed.include));
+    return Boolean(parsed
+      && parsed.version === 1
+      && typeof parsed.workspace === "string"
+      && (Array.isArray(parsed.include) || Array.isArray(parsed.neededFiles)));
   }
 
   function looksLikePlanBlock(text) {

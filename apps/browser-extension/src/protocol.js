@@ -3,7 +3,7 @@
   const APPLY_VERSION = 1;
   const CONTEXT_VERSION = 1;
   const MAX_DIFF_CHARS = 500000;
-  const MAX_CONTEXT_PATTERNS = 50;
+  const MAX_CONTEXT_PATTERNS = 300;
   const APPLY_META_FENCE_RE = /```(?:rel-ai-apply|relai-apply|rel-ai-patch)\s*([\s\S]*?)```/gi;
   const DIFF_FENCE_RE = /```(?:diff|rel-ai-diff|relai-diff)\s*([\s\S]*?)```/gi;
   const APPLY_FENCE_RE = /```(?:rel-ai-apply|relai-apply|rel-ai-diff|relai-diff|rel-ai-patch|diff|json)\s*([\s\S]*?)```/gi;
@@ -226,8 +226,11 @@
     const workspace = validateWorkspaceAlias(candidate.workspace, "workspace");
     optionalString(candidate.title, "title must be a string when provided.");
     const summary = optionalString(candidate.summary, "summary must be a string when provided.");
-    const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.");
-    const include = validatePathArray(candidate.include, "include", MAX_CONTEXT_PATTERNS);
+    const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.")
+      || optionalString(candidate.reason, "reason must be a string when provided.")
+      || optionalString(candidate.acceptableAlternative, "acceptableAlternative must be a string when provided.");
+    const includeSource = Array.isArray(candidate.include) ? candidate.include : candidate.neededFiles;
+    const include = validatePathArray(includeSource, Array.isArray(candidate.include) ? "include" : "neededFiles", MAX_CONTEXT_PATTERNS);
     const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
     const contextScope = validateContextScope(candidate.contextScope || candidate.scope);
     if (include.length === 0 && contextScope !== "full") {
@@ -437,7 +440,7 @@ function validateFallback(value) {
   function looksLikeContext(text) {
     const raw = String(text || "");
     return /```(?:rel-ai-context|relai-context|rel-ai-source|relai-source)/i.test(raw)
-      || (/'?"?version'?"?\s*:\s*1/.test(raw) && /"include"\s*:/.test(raw));
+      || (/'?"?version'?"?\s*:\s*1/.test(raw) && (/"include"\s*:/.test(raw) || /"neededFiles"\s*:/.test(raw)));
   }
 
   function optionalPositiveInteger(value, message) {
