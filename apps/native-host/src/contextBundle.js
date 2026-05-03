@@ -54,10 +54,12 @@ function buildContextBundle(contextRequest, workspace, config) {
     throw new Error("Context request must include explicit files or safe globs. Refusing to dump the entire workspace.");
   }
 
-  const files = resolveRequestedFiles(workspace.path, include, contextRequest.exclude || [], {
+  const resolution = resolveRequestedFiles(workspace.path, include, contextRequest.exclude || [], {
     maxFiles,
-    maxFileBytes
+    maxFileBytes,
+    prompt: contextRequest.prompt || ""
   });
+  const files = resolution.files;
 
   if (files.length === 0) {
     throw new Error("No readable context files matched the request.");
@@ -69,10 +71,10 @@ function buildContextBundle(contextRequest, workspace, config) {
   }
 
   if (contextMode === "zip") {
-    return buildZipContextBundle(contextRequest, workspace, collected, maxChars, config);
+    return buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, resolution.taskMentionedFiles);
   }
 
-  return buildReadableContextBundle(contextRequest, workspace, collected, maxChars);
+  return buildReadableContextBundle(contextRequest, workspace, collected, maxChars, resolution.taskMentionedFiles);
 }
 
 function collectReadableFiles(files, workspacePath, maxFileBytes) {
@@ -102,12 +104,14 @@ function collectReadableFiles(files, workspacePath, maxFileBytes) {
   return { included, skipped, totalChars };
 }
 
-function buildReadableContextBundle(contextRequest, workspace, collected, maxChars) {
+function buildReadableContextBundle(contextRequest, workspace, collected, maxChars, taskMentionedFiles) {
   const included = [];
   const skipped = [...collected.skipped];
   let totalChars = 0;
   let bundle = makeBundleHeader(contextRequest, workspace);
-  bundle += "Use only the provided files as context. If more files are needed, ask for another rel-ai-context request. Do not assume unseen files.\n\n";
+  bundle += "Use only the provided files as context. If more files are needed, ask for another rel-ai-context request. Do not assume unseen files.\n";
+  bundle += makeTaskMentionedFilesSection(taskMentionedFiles);
+  bundle += "\n";
 
   for (const file of collected.included) {
     const chunk = makeFileChunk(file.path, file.content);
@@ -140,11 +144,12 @@ function buildReadableContextBundle(contextRequest, workspace, collected, maxCha
     totalChars,
     files: included,
     skipped,
+    taskMentionedFiles,
     bundle
   };
 }
 
-function buildZipContextBundle(contextRequest, workspace, collected, maxChars, config) {
+function buildZipContextBundle(contextRequest, workspace, collected, maxChars, config, taskMentionedFiles) {
   const archiveFiles = collected.included.map((file) => ({
     path: file.path,
     data: Buffer.from(file.content, "utf8")
@@ -186,9 +191,11 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
     originalChars,
     zipBytes: zip.length,
     compressionRatio: Number(compressionRatio.toFixed(4)),
-    files: manifest
+    files: manifest,
+    taskMentionedFiles
   }, null, 2);
   bundle += "\n```\n";
+  bundle += makeTaskMentionedFilesSection(taskMentionedFiles);
 
   if (collected.skipped.length > 0) {
     bundle += makeSkippedSection(collected.skipped);
@@ -218,6 +225,7 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
     compressionRatio,
     files: collected.included.map((file) => file.path),
     skipped: collected.skipped,
+    taskMentionedFiles,
     bundle
   };
 }
@@ -292,13 +300,131 @@ function resolveRequestedFiles(workspacePath, include, exclude, options) {
     }
   }
 
-  const files = [...selected]
+  const taskMentionedFiles = resolveTaskMentionedFiles(realWorkspace, pool, String(options.prompt || ""), excludedMatchers);
+  for (const item of taskMentionedFiles.included) {
+    selected.add(item.path);
+  }
+
+  const safeFiles = [...selected]
     .filter((item) => isSafeRelativePath(item))
     .filter((item) => !isSecretPath(item))
     .filter((item) => !BINARY_EXTENSIONS.has(path.extname(item).toLowerCase()))
     .sort((a, b) => a.localeCompare(b));
 
-  return files.slice(0, options.maxFiles);
+  const priority = new Set(taskMentionedFiles.included.map((item) => item.path));
+  const prioritized = [
+    ...safeFiles.filter((item) => priority.has(item)),
+    ...safeFiles.filter((item) => !priority.has(item))
+  ];
+
+  return {
+    files: prioritized.slice(0, options.maxFiles),
+    taskMentionedFiles: {
+      mentioned: taskMentionedFiles.mentioned,
+      included: taskMentionedFiles.included.filter((item) => prioritized.slice(0, options.maxFiles).includes(item.path)),
+      missing: taskMentionedFiles.missing
+    }
+  };
+}
+
+function resolveTaskMentionedFiles(realWorkspace, pool, prompt, excludedMatchers) {
+  const mentioned = extractMentionedPaths(prompt);
+  const included = [];
+  const missing = [];
+  const lowerToPath = new Map();
+
+  for (const candidate of pool) {
+    if (!lowerToPath.has(candidate.toLowerCase())) {
+      lowerToPath.set(candidate.toLowerCase(), candidate);
+    }
+  }
+
+  for (const raw of mentioned) {
+    const normalized = normalizeMentionedPath(raw);
+    if (!normalized || !isSafeRelativePath(normalized) || isSecretPath(normalized)) {
+      continue;
+    }
+
+    const exact = pool.includes(normalized) ? normalized : lowerToPath.get(normalized.toLowerCase());
+    if (exact && !isExcluded(exact, excludedMatchers) && !BINARY_EXTENSIONS.has(path.extname(exact).toLowerCase())) {
+      included.push({ requested: raw, path: exact, status: exact === normalized ? "exists" : "exists-case-insensitive" });
+      continue;
+    }
+
+    missing.push({ requested: raw, normalized, status: "not-in-selected-workspace-index" });
+  }
+
+  return { mentioned, included: uniqueByPath(included), missing: uniqueByNormalized(missing) };
+}
+
+function extractMentionedPaths(prompt) {
+  const text = String(prompt || "");
+  const found = new Set();
+  const patterns = [
+    /(?:^|[\s`"'(:\[])([A-Za-z0-9._-]+\/[A-Za-z0-9._@+\-/]+\.[A-Za-z0-9]{1,12})(?=$|[\s`"'),.:;\]])/g,
+    /(?:^|[\s`"'(:\[])([A-Za-z0-9._@+-]+\.(?:md|markdown|json|js|ts|tsx|jsx|css|html|yml|yaml|toml|py|rs|go|java|c|cpp|h|hpp|sh|txt))(?=$|[\s`"'),.:;\]])/gi
+  ];
+
+  for (const regex of patterns) {
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const candidate = normalizeMentionedPath(match[1]);
+      if (candidate) found.add(candidate);
+    }
+  }
+
+  if (/\breadme\b/i.test(text)) {
+    found.add("README.md");
+    found.add("readme.md");
+  }
+
+  return [...found];
+}
+
+function normalizeMentionedPath(input) {
+  let value = String(input || "").trim().replace(/\\/g, "/");
+  value = value.replace(/^\.\//, "").replace(/[),.;:]+$/g, "");
+  if (!value || value.includes("*") || value.includes("?")) return "";
+  return value;
+}
+
+function uniqueByPath(items) {
+  const seen = new Set();
+  const output = [];
+  for (const item of items) {
+    if (!seen.has(item.path)) {
+      seen.add(item.path);
+      output.push(item);
+    }
+  }
+  return output;
+}
+
+function uniqueByNormalized(items) {
+  const seen = new Set();
+  const output = [];
+  for (const item of items) {
+    if (!seen.has(item.normalized)) {
+      seen.add(item.normalized);
+      output.push(item);
+    }
+  }
+  return output;
+}
+
+function makeTaskMentionedFilesSection(taskMentionedFiles) {
+  if (!taskMentionedFiles || ((!taskMentionedFiles.included || taskMentionedFiles.included.length === 0) && (!taskMentionedFiles.missing || taskMentionedFiles.missing.length === 0))) {
+    return "";
+  }
+
+  let text = "\nTask-mentioned file check:\n";
+  for (const item of (taskMentionedFiles.included || []).slice(0, 20)) {
+    text += `- ${item.requested}: exists as ${item.path} and was included in the context. Use this exact path/case in diffs.\n`;
+  }
+  for (const item of (taskMentionedFiles.missing || []).slice(0, 20)) {
+    text += `- ${item.requested}: not found in the selected workspace file index. Do not create or modify it unless the task explicitly requires a new file and no existing equivalent is listed.\n`;
+  }
+  return text;
 }
 
 function listGitVisibleFiles(workspacePath) {

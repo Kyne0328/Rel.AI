@@ -612,6 +612,12 @@
     if (!trimmed) {
       return "";
     }
+
+    const withoutRenderedLabel = stripRenderedLanguageLabel(trimmed);
+    if (withoutRenderedLabel !== trimmed) {
+      return normalizeBlockText(withoutRenderedLabel);
+    }
+
     if (trimmed.startsWith("```") || trimmed.startsWith("{") || trimmed.startsWith("diff --git ") || trimmed.startsWith("--- a/")) {
       return trimmed;
     }
@@ -621,6 +627,30 @@
       return trimmed.slice(firstBrace, lastBrace + 1).trim();
     }
     return trimmed;
+  }
+
+  function stripRenderedLanguageLabel(text) {
+    const lines = String(text || "").split(/\r?\n/);
+    if (lines.length < 2) {
+      return String(text || "").trim();
+    }
+
+    const first = lines[0].trim().toLowerCase();
+    const labels = new Set([
+      "rel-ai-apply",
+      "relai-apply",
+      "rel-ai-patch",
+      "rel-ai-diff",
+      "relai-diff",
+      "diff",
+      "json"
+    ]);
+
+    if (labels.has(first)) {
+      return lines.slice(1).join("\n").trim();
+    }
+
+    return String(text || "").trim();
   }
 
   function looksLikeContextBlock(text) {
@@ -655,7 +685,7 @@
   }
 
   function looksLikeDiffBlock(text) {
-    const raw = String(text || "").trim();
+    const raw = stripRenderedLanguageLabel(String(text || "").trim());
     if (!raw) {
       return false;
     }
@@ -666,7 +696,7 @@
   }
 
   function parseJsonObjectFromBlockText(text) {
-    const body = stripFence(String(text || "").trim());
+    const body = stripRenderedLanguageLabel(stripFence(String(text || "").trim()));
     const candidate = extractJsonObjectText(body);
     if (!candidate) {
       return null;
@@ -991,7 +1021,7 @@
   }
 
   function extractRawDiffForPreview(text) {
-    const raw = String(text || "");
+    const raw = stripRenderedLanguageLabel(String(text || ""));
     const gitIndex = raw.indexOf("diff --git ");
     if (gitIndex !== -1) {
       return raw.slice(gitIndex).trim();

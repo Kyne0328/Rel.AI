@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.26";
+const EXTENSION_VERSION = "0.9.28";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;
@@ -394,6 +394,7 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
     dragChipMessage: inserted && inserted.dragChipMessage,
     files: response.files || [],
     skipped: response.skipped || [],
+    taskMentionedFiles: response.taskMentionedFiles || null,
     inserted: Boolean(inserted && inserted.ok),
     submitted: Boolean(inserted && inserted.submitted),
     insertMessage: inserted && inserted.message,
@@ -1863,6 +1864,22 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
   })();
 }
 
+function makeTaskFileNote(response) {
+  const info = response && response.taskMentionedFiles;
+  if (!info || ((!Array.isArray(info.included) || info.included.length === 0) && (!Array.isArray(info.missing) || info.missing.length === 0))) {
+    return "";
+  }
+
+  const lines = ["Task-mentioned file check:"];
+  for (const item of (info.included || []).slice(0, 20)) {
+    lines.push(`- ${item.requested}: exists as ${item.path}. Use this exact path/case in the diff.`);
+  }
+  for (const item of (info.missing || []).slice(0, 20)) {
+    lines.push(`- ${item.requested}: was not found in the selected workspace context. Ask for it with rel-ai-context if needed; do not guess.`);
+  }
+  return `${lines.join("\n")}\n\n`;
+}
+
 function buildChatGPTRequestPrompt(context, task, response) {
   const userPrompt = String(task.prompt || context.prompt || "").trim();
   const testCommandKey = String(task.testCommandKey || "").trim();
@@ -1881,11 +1898,12 @@ function buildChatGPTRequestPrompt(context, task, response) {
     }
   };
 
+  const taskFileNote = makeTaskFileNote(response);
   const baseInstructions = `Rel.AI code request
 
 Workspace alias: ${workspace}
 Context mode: ${contextMode}
-
+${taskFileNote}
 Task:
 ${userPrompt}
 
@@ -1916,9 +1934,10 @@ Patch correctness rules:
 - Do not include a raw testCommand. Use testCommandKey only if provided.
 - Prefer the smallest safe change. Do not refactor unrelated code.
 - Match the existing files exactly as they appear in the uploaded/readable context.
-- Before creating a file with /dev/null or new file mode, verify that the file is absent from the context and manifest.
+- Use the exact file path and filename casing shown in the manifest/context. For example, do not use readme.md if the manifest says README.md.
+- Before creating a file with /dev/null or new file mode, verify that the file is absent from the context, manifest, and task-mentioned file check.
 - If a file already exists, modify it with a normal diff; do not mark it as a new file.
-- If the current contents of a required file are missing or uncertain, reply with a \`\`\`rel-ai-context block listing the additional files needed instead of guessing.
+- If a required file is mentioned by the task but missing from the manifest/context, reply with a \`\`\`rel-ai-context block asking for that file instead of creating a guessed file.
 `;
 
   if (contextMode === "zip") {
