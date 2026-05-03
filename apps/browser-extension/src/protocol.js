@@ -355,6 +355,26 @@ function validateFallback(value) {
     };
   }
 
+  function makeOpenCodeServerStartMessage(workspace) {
+    return {
+      type: "relai.opencodeServerStart",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: uuid(),
+      source: "browser",
+      workspace
+    };
+  }
+
+  function makeOpenCodeServerStatusMessage(workspace) {
+    return {
+      type: "relai.opencodeServerStatus",
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: uuid(),
+      source: "browser",
+      workspace
+    };
+  }
+
   function makePingMessage() {
     return {
       type: "ping",
@@ -433,6 +453,8 @@ function validateFallback(value) {
     makeApplyMessage,
     makeContextMessage,
     makeListWorkspaceMessage,
+    makeOpenCodeServerStartMessage,
+    makeOpenCodeServerStatusMessage,
     makePingMessage,
     makeConfigSummaryMessage,
     looksLikeApply,

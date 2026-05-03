@@ -59,6 +59,16 @@ function validateNativeMessage(value, config) {
     };
   }
 
+  if (type === "relai.opencodeServerStart" || type === "relai.opencodeServerStatus") {
+    return {
+      type,
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      ...(source ? { source } : {}),
+      workspace: validateWorkspaceAlias(candidate.workspace, "OpenCode server workspace")
+    };
+  }
+
   throw new Error(`Unsupported message type: ${type}`);
 }
 
@@ -295,6 +305,12 @@ function makeResponse(input) {
     ...(input.files ? { files: input.files } : {}),
     ...(input.skipped ? { skipped: input.skipped } : {}),
     ...(input.bundle ? { bundle: input.bundle } : {}),
+    ...(input.opencodeServer ? { opencodeServer: input.opencodeServer } : {}),
+    ...(input.url ? { url: input.url } : {}),
+    ...(input.pid !== undefined ? { pid: input.pid } : {}),
+    ...(input.running !== undefined ? { running: input.running } : {}),
+    ...(input.alreadyRunning !== undefined ? { alreadyRunning: input.alreadyRunning } : {}),
+    ...(input.statusFile ? { statusFile: input.statusFile } : {}),
     ...(input.stdout ? { stdout: input.stdout } : {}),
     ...(input.stderr ? { stderr: input.stderr } : {})
   };

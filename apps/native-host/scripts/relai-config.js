@@ -61,6 +61,16 @@ function main() {
     return;
   }
 
+  if (command === "set" && subcommand === "opencode-server-url") {
+    setConfigString("opencodeServerUrl", rest, "OpenCode server URL");
+    return;
+  }
+
+  if (command === "set" && subcommand === "opencode-server-args") {
+    setConfigArray("opencodeServerArgs", rest, "OpenCode server args");
+    return;
+  }
+
   if (command === "set" && subcommand === "allow-direct-test-commands") {
     setBoolean("allowDirectTestCommands", rest);
     return;
@@ -169,6 +179,13 @@ function setConfigString(field, args, label) {
   console.log(`Set ${label} to '${value || ""}'.`);
 }
 
+function setConfigArray(field, args, label) {
+  const config = readConfig();
+  config[field] = args.length ? args : [];
+  writeConfig(config);
+  console.log(`Set ${label} to ${JSON.stringify(config[field])}.`);
+}
+
 function setBoolean(field, args) {
   const [value] = args;
   if (!value || !["true", "false"].includes(value)) {
@@ -193,6 +210,8 @@ Commands:
   set opencode-command <command>
   set opencode-model <provider/model>
   set opencode-agent <agent>
+  set opencode-server-url <url>
+  set opencode-server-args <arg1> <arg2> ...
   set allow-direct-test-commands <true|false>
 
 Common setup:

@@ -8,6 +8,7 @@ const { applyPatchFirst } = require("./patchApply");
 const { runOpenCodeFallback } = require("./opencode");
 const { buildContextBundle } = require("./contextBundle");
 const { listWorkspaceDirectory } = require("./workspaceList");
+const { startOpenCodeServer, getOpenCodeServerStatus } = require("./opencodeServer");
 
 startNativeMessagingLoop(process.stdin, process.stdout, async (rawMessage) => {
   try {
@@ -68,6 +69,26 @@ startNativeMessagingLoop(process.stdin, process.stdout, async (rawMessage) => {
     if (message.type === "relai.listWorkspace") {
       const workspace = resolveWorkspace(config, message.workspace);
       const result = listWorkspaceDirectory({ dir: message.dir }, workspace);
+      return makeResponse({
+        ...result,
+        requestId: message.requestId,
+        nativeHost: getNativeHostInfo()
+      });
+    }
+
+    if (message.type === "relai.opencodeServerStart") {
+      const workspace = resolveWorkspace(config, message.workspace);
+      const result = await startOpenCodeServer(workspace, config);
+      return makeResponse({
+        ...result,
+        requestId: message.requestId,
+        nativeHost: getNativeHostInfo()
+      });
+    }
+
+    if (message.type === "relai.opencodeServerStatus") {
+      const workspace = resolveWorkspace(config, message.workspace);
+      const result = getOpenCodeServerStatus(workspace, config);
       return makeResponse({
         ...result,
         requestId: message.requestId,

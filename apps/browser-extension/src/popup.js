@@ -31,6 +31,7 @@ const dashboardArchiveNameEl = document.getElementById("dashboardArchiveName");
 const dashboardArchiveMetaEl = document.getElementById("dashboardArchiveMeta");
 const debugLogEl = document.getElementById("debugLog");
 const debugCardEl = document.getElementById("debugCard");
+const opencodeServerInfoEl = document.getElementById("opencodeServerInfo");
 
 let configSummary = null;
 let pickerDir = "";
@@ -56,6 +57,9 @@ bind("downloadArchive", () => downloadLastArchive());
 bind("copyArchivePath", () => copyLastArchivePath());
 bind("copyDebugLog", () => copyDebugLog());
 bind("clearDebugLog", () => clearDebugLog());
+bind("opencodeServerStart", () => opencodeServerStart());
+bind("opencodeServerStatus", () => opencodeServerStatus());
+bind("opencodeServerOpen", () => opencodeServerOpen());
 
 if (dashboardArchiveChipEl) {
   dashboardArchiveChipEl.addEventListener("dragstart", setDashboardArchiveDragPayload);
@@ -255,6 +259,35 @@ async function composeRequest() {
     },
     autoSubmit: autoSubmitEl.checked
   });
+}
+
+function getSelectedWorkspaceAlias() {
+  return clean(workspaceManualEl.value || workspaceEl.value);
+}
+
+async function opencodeServerStart() {
+  const workspace = getSelectedWorkspaceAlias();
+  if (!workspace) {
+    throw new Error("Choose a workspace alias before starting OpenCode server.");
+  }
+  return sendMessage({ type: "relai.opencodeServerStart", workspace });
+}
+
+async function opencodeServerStatus() {
+  const workspace = getSelectedWorkspaceAlias();
+  if (!workspace) {
+    throw new Error("Choose a workspace alias before checking OpenCode server status.");
+  }
+  return sendMessage({ type: "relai.opencodeServerStatus", workspace });
+}
+
+async function opencodeServerOpen() {
+  const status = await opencodeServerStatus();
+  if (!status || !status.ok || !status.url) {
+    return status || { ok: false, error: "OpenCode server URL is unavailable." };
+  }
+  const opened = await sendMessage({ type: "relai.openUrl", url: status.url });
+  return opened && opened.ok ? { ...status, message: `Opened OpenCode server at ${status.url}.` } : opened;
 }
 
 function populateWorkspaceOptions(workspaces) {
@@ -514,6 +547,12 @@ function renderResponse(response) {
     return;
   }
 
+  if (response.type === "relai.opencodeServer") {
+    renderOpenCodeServerInfo(response);
+    setStatus(response.message || (response.running ? "OpenCode server is running." : "OpenCode server is not running."), !response.ok);
+    return;
+  }
+
   if (response.type === "relai.chatgptRequest") {
     const mode = response.contextMode === "zip" ? "ZIP attachment" : "readable context";
     const size = response.contextMode === "zip" && response.zipBytes ? `, zip ${response.zipBytes} bytes` : "";
@@ -565,6 +604,18 @@ function renderResponse(response) {
   }
 
   setStatus(response.message || "Patch applied.");
+}
+
+function renderOpenCodeServerInfo(response) {
+  if (!opencodeServerInfoEl) return;
+  const parts = [];
+  parts.push(`workspace: ${response.workspace || "unknown"}`);
+  parts.push(`running: ${response.running ? "yes" : "no"}`);
+  if (response.pid) parts.push(`pid: ${response.pid}`);
+  if (response.url) parts.push(`url: ${response.url}`);
+  if (response.statusFile) parts.push(`status: ${response.statusFile}`);
+  if (response.error) parts.push(`error: ${response.error}`);
+  opencodeServerInfoEl.textContent = parts.join(" | ");
 }
 
 function showArchiveFallback(response) {

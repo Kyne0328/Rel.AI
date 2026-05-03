@@ -408,3 +408,31 @@ button.primary:hover {
 #status {
   color: #176b2c;
 }
+
+
+.opencode-card {
+  border: 1px solid #d9e2ef;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f7fbff;
+  margin: 10px 0;
+}
+
+.opencode-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.opencode-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+#opencodeServerInfo {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #333;
+}

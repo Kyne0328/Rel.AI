@@ -93,6 +93,17 @@
         Use OpenCode fallback when patch application or tests fail
       </label>
 
+      <section class="opencode-card">
+        <h3>OpenCode server</h3>
+        <p class="small-note">Start an OpenCode server in the selected workspace when you want to inspect or interact with OpenCode directly.</p>
+        <div class="opencode-actions">
+          <button id="opencodeServerStart" type="button">Start server</button>
+          <button id="opencodeServerStatus" type="button">Check status</button>
+          <button id="opencodeServerOpen" type="button">Open server</button>
+        </div>
+        <code id="opencodeServerInfo">Not checked.</code>
+      </section>
+
       <label class="checkbox warning-checkbox">
         <input id="autoSubmit" type="checkbox">
         Submit to ChatGPT after inserting

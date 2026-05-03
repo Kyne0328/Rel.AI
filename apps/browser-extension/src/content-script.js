@@ -300,7 +300,8 @@
         }, 17 * 60 * 1000);
 
         if (!response || !response.ok) {
-          throw new Error(response && response.error ? response.error : response && response.message ? response.message : "Rel.AI native bridge returned an error.");
+          status.textContent = describeApplyFailure(response);
+          return;
         }
         status.textContent = summarizeApplyResult(response);
       } catch (error) {
@@ -1023,6 +1024,38 @@
       }
     }
     return [...new Set(out.filter((item) => item && item !== "/dev/null"))];
+  }
+
+  function describeApplyFailure(response) {
+    if (!response) {
+      return "Rel.AI native bridge returned an empty error.";
+    }
+    const parts = [];
+    if (response.message) parts.push(response.message);
+    if (response.error) parts.push(response.error);
+    if (response.gitCheck && !response.gitCheck.ok) {
+      parts.push(formatCommandDetails("git apply --check", response.gitCheck));
+    }
+    if (response.gitApply && !response.gitApply.ok) {
+      parts.push(formatCommandDetails("git apply", response.gitApply));
+    }
+    if (response.test && !response.test.ok) {
+      parts.push(formatCommandDetails("test command", response.test));
+    }
+    if (response.fallback && !response.fallback.ok) {
+      parts.push(formatCommandDetails("OpenCode fallback", response.fallback));
+    }
+    return parts.filter(Boolean).join(" | ") || "Rel.AI native bridge returned an error.";
+  }
+
+  function formatCommandDetails(label, result) {
+    const details = [];
+    if (result.exitCode !== undefined) details.push(`exit ${result.exitCode}`);
+    if (result.signal) details.push(`signal ${result.signal}`);
+    if (result.timedOut) details.push(`timed out after ${Math.round((result.timeoutMs || 0) / 1000)}s`);
+    const output = result.stderr || result.stdout || result.error || "";
+    const trimmed = String(output || "").trim();
+    return `${label}${details.length ? ` (${details.join(", ")})` : ""}${trimmed ? `: ${trimmed.slice(0, 1200)}` : ""}`;
   }
 
   function summarizeApplyResult(response) {

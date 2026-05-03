@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.24";
+const EXTENSION_VERSION = "0.9.25";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 let _debugLogEnabled = false;
@@ -247,6 +247,31 @@ async function handleMessage(message, sender) {
       throw new Error("Workspace alias is required for browsing.");
     }
     return sendNativeMessage(RelAiProtocol.makeListWorkspaceMessage(workspace, String(message.dir || "")));
+  }
+
+  if (message.type === "relai.opencodeServerStart") {
+    const workspace = String(message.workspace || "").trim();
+    if (!workspace) {
+      throw new Error("Workspace alias is required to start OpenCode server.");
+    }
+    return sendNativeMessage(RelAiProtocol.makeOpenCodeServerStartMessage(workspace));
+  }
+
+  if (message.type === "relai.opencodeServerStatus") {
+    const workspace = String(message.workspace || "").trim();
+    if (!workspace) {
+      throw new Error("Workspace alias is required to check OpenCode server status.");
+    }
+    return sendNativeMessage(RelAiProtocol.makeOpenCodeServerStatusMessage(workspace));
+  }
+
+  if (message.type === "relai.openUrl") {
+    const url = String(message.url || "").trim();
+    if (!/^https?:\/\/127\.0\.0\.1(?::\d+)?(?:\/.*)?$/.test(url) && !/^https?:\/\/localhost(?::\d+)?(?:\/.*)?$/.test(url)) {
+      throw new Error("Rel.AI only opens localhost OpenCode server URLs.");
+    }
+    const tab = await chrome.tabs.create({ url });
+    return { ok: true, type: "relai.openUrl", url, tabId: tab && tab.id, message: `Opened ${url}.` };
   }
 
   if (message.type === "relai.composeChatGPTRequest") {

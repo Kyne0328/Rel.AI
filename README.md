@@ -304,7 +304,7 @@ Diagnostics are hidden by default. Open the Rel.AI dashboard and press **Ctrl+Sh
 Use diagnostics only when troubleshooting bridge, ZIP attachment, or patch-apply behavior. The log is stored locally by the extension and is not sent anywhere unless you copy it.
 
 
-## Version 0.9.24
+## Version 0.9.25
 
 - OpenCode fallback now writes `.relai/fallback-latest.json` plus a per-run status file so you can verify whether fallback started, completed, failed, or timed out.
 - Fallback timeout is now explicit through `fallbackTimeoutMs` in `~/.rel-ai/opencode.json` and defaults to 4 minutes.
@@ -333,3 +333,17 @@ Use diagnostics only when troubleshooting bridge, ZIP attachment, or patch-apply
 - Reduces upload overlay cleanup to a lightweight dragleave/Escape pass plus targeted overlay hiding.
 - Keeps the draggable ZIP chip as the fallback when automatic upload is not confirmed.
 - Disables persistent debug-log writes unless the hidden diagnostics panel is enabled.
+
+
+## Version 0.9.25
+
+- Shows exact `git apply --check`, `git apply`, test, or fallback stdout/stderr when an apply fails.
+- Adds OpenCode server controls in the dashboard: start server, check status, and open the configured localhost URL.
+- OpenCode server status is stored in `~/.rel-ai/opencode-server-<workspace>.json`.
+
+Optional server config:
+
+```bash
+node apps/native-host/scripts/relai-config.js set opencode-server-url http://127.0.0.1:4096
+node apps/native-host/scripts/relai-config.js set opencode-server-args serve
+```

@@ -1,11 +1,11 @@
 {
   "name": "rel-ai-chatgpt-request-bridge",
   "private": true,
-  "version": "0.9.24",
+  "version": "0.9.25",
   "description": "Rel.AI builds ChatGPT coding requests from selected workspace context, uploads ZIP context when requested, and applies returned patches locally with Git and optional OpenCode fallback.",
   "license": "MIT",
   "scripts": {
-    "check": "node --check apps/native-host/src/index.js && node --check apps/native-host/src/nativeMessaging.js && node --check apps/native-host/src/config.js && node --check apps/native-host/src/patchApply.js && node --check apps/native-host/src/contextBundle.js && node --check apps/native-host/src/workspaceList.js && node --check apps/native-host/src/opencode.js && node --check apps/native-host/src/protocol.js && node --check apps/native-host/scripts/install-native-host.js && node --check apps/native-host/scripts/relai-config.js && node --check apps/native-host/scripts/test-native-message.js && node --check apps/browser-extension/src/background.js && node --check apps/browser-extension/src/content-script.js && node --check apps/browser-extension/src/popup.js && node --check apps/browser-extension/src/protocol.js && node --check apps/native-host/scripts/diagnose-native-host.js && node --check apps/native-host/scripts/probe-native-host.js",
+    "check": "node --check apps/native-host/src/index.js && node --check apps/native-host/src/nativeMessaging.js && node --check apps/native-host/src/config.js && node --check apps/native-host/src/patchApply.js && node --check apps/native-host/src/contextBundle.js && node --check apps/native-host/src/workspaceList.js && node --check apps/native-host/src/opencode.js && node --check apps/native-host/src/opencodeServer.js && node --check apps/native-host/src/protocol.js && node --check apps/native-host/scripts/install-native-host.js && node --check apps/native-host/scripts/relai-config.js && node --check apps/native-host/scripts/test-native-message.js && node --check apps/browser-extension/src/background.js && node --check apps/browser-extension/src/content-script.js && node --check apps/browser-extension/src/popup.js && node --check apps/browser-extension/src/protocol.js && node --check apps/native-host/scripts/diagnose-native-host.js && node --check apps/native-host/scripts/probe-native-host.js",
     "install:chrome-host": "node apps/native-host/scripts/install-native-host.js --browser chrome",
     "install:edge-host": "node apps/native-host/scripts/install-native-host.js --browser edge",
     "workspace:add": "node apps/native-host/scripts/relai-config.js workspace add",

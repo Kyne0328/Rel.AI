@@ -31,6 +31,7 @@ async function applyPatchFirst(applyRequest, workspace, config, runOpenCodeFallb
       if (applyRequest.dryRun) {
         result.ok = false;
         result.dryRun = true;
+        result.error = formatCommandFailure("git apply --check", check);
         result.message = "Dry run failed. git apply --check did not pass; no files were changed and fallback was not run.";
         return result;
       }
@@ -45,6 +46,7 @@ async function applyPatchFirst(applyRequest, workspace, config, runOpenCodeFallb
         result.message = result.ok ? "OpenCode fallback completed after patch check failed." : "Patch check failed and OpenCode fallback failed.";
         return result;
       }
+      result.error = formatCommandFailure("git apply --check", check);
       result.message = "Patch did not apply cleanly and fallback is disabled.";
       return result;
     }
@@ -71,6 +73,7 @@ async function applyPatchFirst(applyRequest, workspace, config, runOpenCodeFallb
         result.message = result.ok ? "OpenCode fallback completed after patch apply failed." : "Patch apply failed and OpenCode fallback failed.";
         return result;
       }
+      result.error = formatCommandFailure("git apply", apply);
       result.message = "Patch check passed but git apply failed. Fallback is disabled.";
       return result;
     }
@@ -98,6 +101,7 @@ async function applyPatchFirst(applyRequest, workspace, config, runOpenCodeFallb
           return result;
         }
         result.ok = false;
+        result.error = formatCommandFailure(`test command${testCommand.safeLabel ? ` (${testCommand.safeLabel})` : ""}`, test);
         result.message = "Patch applied, but tests failed and fallback is disabled.";
         return result;
       }
@@ -345,6 +349,33 @@ function appendLimited(current, next, maxBytes) {
   return combined.slice(Math.max(0, combined.length - allowed)) + marker;
 }
 
+function formatCommandFailure(label, result) {
+  const parts = [];
+  parts.push(`${label} failed with exit code ${result && result.exitCode !== undefined ? result.exitCode : "unknown"}.`);
+  if (result && result.signal) {
+    parts.push(`signal: ${result.signal}`);
+  }
+  if (result && result.timedOut) {
+    parts.push(`timed out after ${Math.round((result.timeoutMs || 0) / 1000)}s`);
+  }
+  if (result && result.stderr) {
+    parts.push(`stderr:\n${truncateForError(result.stderr, 6000)}`);
+  }
+  if (result && result.stdout) {
+    parts.push(`stdout:\n${truncateForError(result.stdout, 6000)}`);
+  }
+  if (result && result.error) {
+    parts.push(`error: ${result.error}`);
+  }
+  return parts.join("\n\n");
+}
+
+function truncateForError(value, limit) {
+  const text = String(value || "").trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n[Rel.AI truncated ${text.length - limit} more characters]`;
+}
+
 module.exports = {
   applyPatchFirst,
   validateDiffPaths,
@@ -353,5 +384,6 @@ module.exports = {
   runCommand,
   runShellCommand,
   summarizeCommand,
+  formatCommandFailure,
   appendLimited
 };

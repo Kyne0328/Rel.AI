@@ -21,6 +21,8 @@ function defaultConfig() {
     defaultWorkspace: "default",
     timeoutMs: 15 * 60 * 1000,
     fallbackTimeoutMs: 4 * 60 * 1000,
+    opencodeServerUrl: "http://127.0.0.1:4096",
+    opencodeServerArgs: ["serve"],
     maxOutputBytes: 1024 * 1024,
     maxPromptChars: 120000,
     maxDiffChars: 500000,
@@ -85,6 +87,12 @@ function normalizeConfig(config) {
       : base.opencodeCommand,
     fallbackModel: typeof candidate.fallbackModel === "string" ? candidate.fallbackModel.trim() : base.fallbackModel,
     fallbackAgent: typeof candidate.fallbackAgent === "string" ? candidate.fallbackAgent.trim() : base.fallbackAgent,
+    opencodeServerUrl: typeof candidate.opencodeServerUrl === "string" && candidate.opencodeServerUrl.trim()
+      ? candidate.opencodeServerUrl.trim()
+      : base.opencodeServerUrl,
+    opencodeServerArgs: Array.isArray(candidate.opencodeServerArgs) && candidate.opencodeServerArgs.every((item) => typeof item === "string" && item.trim())
+      ? candidate.opencodeServerArgs.map((item) => item.trim())
+      : base.opencodeServerArgs,
     defaultWorkspace: typeof candidate.defaultWorkspace === "string" && isValidAlias(candidate.defaultWorkspace)
       ? candidate.defaultWorkspace
       : base.defaultWorkspace,
