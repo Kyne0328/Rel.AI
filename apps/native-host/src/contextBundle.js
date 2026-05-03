@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
 const os = require("node:os");
+const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 
 const DEFAULT_MAX_CONTEXT_FILES = 25;
@@ -219,8 +220,9 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
 
   const originalChars = collected.totalChars;
   const compressionRatio = originalChars > 0 ? zip.length / originalChars : 0;
-  const safeTask = slugify(contextRequest.prompt || workspace.alias || "workspace").slice(0, 80) || "workspace";
-  const archiveName = `rel-ai-${safeTask}.zip`;
+  const archiveFingerprint = makeArchiveFingerprint(workspace.alias, contextScope, manifest, zip);
+  const safeTask = slugify(contextRequest.prompt || workspace.alias || "workspace").slice(0, 60) || "workspace";
+  const archiveName = `rel-ai-${safeTask}-${archiveFingerprint}.zip`;
   const archivePath = writeTempArchive(archiveName, zip);
 
   let bundle = makeBundleHeader(contextRequest, workspace, contextScope);
@@ -287,6 +289,24 @@ function buildZipContextBundle(contextRequest, workspace, collected, maxChars, c
   };
 }
 
+
+function makeArchiveFingerprint(workspaceAlias, contextScope, manifest, zip) {
+  const hash = crypto.createHash("sha256");
+  hash.update(String(workspaceAlias || ""));
+  hash.update("\0");
+  hash.update(String(contextScope || ""));
+  hash.update("\0");
+  for (const item of manifest) {
+    hash.update(item.path);
+    hash.update("\0");
+    hash.update(String(item.bytes));
+    hash.update("\0");
+    hash.update(String(item.chars));
+    hash.update("\0");
+  }
+  hash.update(zip);
+  return hash.digest("hex").slice(0, 10);
+}
 
 function writeTempArchive(archiveName, buffer) {
   const root = path.join(os.tmpdir(), "rel-ai-archives");
@@ -678,15 +698,35 @@ function hasGlob(value) {
 }
 
 function normalizeRequestPath(input) {
-  const value = String(input || "").trim().replace(/\\/g, "/");
+  const value = String(input || "").trim().replace(/\\/g, "/").replace(/^\.\//, "");
   if (!value) {
     throw new Error("Context include/exclude paths cannot be empty.");
   }
-  if (!isSafeRelativePath(value.replace(/\*\*/g, "x").replace(/\*/g, "x").replace(/\?/g, "x"))) {
+  if (value === "." || value === "/" || value === "**" || value === "./**") {
+    throw new Error("Context include/exclude path is too broad. Use a specific subdirectory like lib/data/services/**.");
+  }
+  const hasWildcard = hasGlob(value);
+  if (hasWildcard && !isSafeDirectoryGlob(value)) {
+    throw new Error("Context include/exclude paths may only use the safe directory glob form subdir/**. Other wildcards are not supported.");
+  }
+  const safeProbe = hasWildcard ? value.slice(0, -3) : value;
+  if (!isSafeRelativePath(safeProbe)) {
     throw new Error(`Unsafe context path: ${input}`);
   }
-  return value.replace(/^\.\//, "");
+  return value;
 }
+
+function isSafeDirectoryGlob(value) {
+  if (!value.endsWith("/**")) {
+    return false;
+  }
+  const prefix = value.slice(0, -3).replace(/\/+$/g, "");
+  return Boolean(prefix)
+    && prefix !== "."
+    && !hasGlob(prefix)
+    && isSafeRelativePath(prefix);
+}
+
 
 function isSafeRelativePath(value) {
   return Boolean(value)

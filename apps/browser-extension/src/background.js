@@ -1655,6 +1655,10 @@ function buildChatGPTRequestPrompt(context, task, response) {
   const taskFileNote = makeTaskFileNote(response);
   const commonHeader = `Rel.AI code request
 
+Request boundary:
+- This is the current active Rel.AI request. Ignore unrelated older Rel.AI requests, workspaces, manifests, and ZIP attachments in this chat.
+- Use only context attached or shown under this request, plus explicitly requested follow-up context for this same workspace and task.
+
 Workspace alias: ${workspace}
 Context mode: ${contextMode}
 Context scope: ${contextScope}
@@ -1669,7 +1673,11 @@ Context and correctness rules:
 - Use the compact project file tree to preserve exact path casing and determine whether files already exist.
 - File-tree entries prove paths exist, but they do not provide contents unless the file is also included in the readable context or ZIP manifest.
 - If a required file is mentioned by the task but missing from the manifest/context, or if it appears only in the file tree without contents, immediately reply with a \`\`\`rel-ai-context block asking for that file instead of guessing. Do this automatically; do not wait for the user to ask you to request more context.
+- Follow-up rel-ai-context requests must list only the additional files you need in the include array. Do not repeat files that were already included unless you need them resent because the upload was unavailable.
+- To keep requested-file lists short, prefer safe subdirectory globs when several files from the same folder are needed, for example "lib/data/services/**" or "test/services/**".
+- Directory globs must use only the form "subdir/**". Do not use "**", ".", workspace-wide globs, filename wildcards, or absolute paths.
 - When replying with rel-ai-context, use the same contextMode as this request: "${contextMode}". If this request used ZIP context, the follow-up context should also be ZIP. If this request used readable text, the follow-up should also be readable text.
+- The rel-ai-context JSON must use an include array for requested paths. Do not use requestedFiles or neededFiles in new responses.
 - If broad repository context is required, ask for full repo upload mode only when narrower follow-up context is insufficient.
 - Keep paths relative to the workspace.
 - Do not include absolute paths or ../ paths.
@@ -1726,6 +1734,7 @@ Planning correctness rules:${contextRules}`;
     return `${baseInstructions}
 Attached ZIP context:
 - I have attached a real ZIP file named ${archiveName} through ChatGPT's file upload UI.
+- Treat ${archiveName} as the current context for this request and ignore older Rel.AI ZIP attachments from previous turns.
 - Inspect the uploaded archive contents and use them as the source context.
 - If the ZIP is unavailable or you cannot inspect it, do not guess. Ask me to resend in Readable text mode or select a narrower file list.
 
@@ -1891,7 +1900,7 @@ function extractRelAiTextInPage(kind, mode) {
     const raw = String(text || "");
     if (kind === "context") {
       return /```(?:rel-ai-context|relai-context|rel-ai-source|relai-source)/i.test(raw)
-        || (/"version"\s*:\s*1/.test(raw) && (/"include"\s*:/.test(raw) || /"neededFiles"\s*:/.test(raw)));
+        || (/"version"\s*:\s*1/.test(raw) && (/"include"\s*:/.test(raw) || /"neededFiles"\s*:/.test(raw) || /"requestedFiles"\s*:/.test(raw)));
     }
     return /```(?:rel-ai-apply|relai-apply|rel-ai-diff|relai-diff|rel-ai-patch|diff|json)/i.test(raw)
       || (/"version"\s*:\s*1/.test(raw) && (/"diff"\s*:/.test(raw) || /"workspace"\s*:/.test(raw)))
@@ -1978,6 +1987,65 @@ async function applyText(text, source, options) {
   return sendNativeMessage(message);
 }
 
+function buildFollowUpContextPrompt(context, response) {
+  const workspace = String((response && response.workspace) || (context && context.workspace) || "").trim();
+  const prompt = String((context && context.prompt) || "").trim();
+  const contextMode = String((response && response.contextMode) || (context && context.contextMode) || "readable").trim().toLowerCase() === "zip" ? "zip" : "readable";
+  const archiveName = response && response.archiveName ? String(response.archiveName) : "rel-ai-context.zip";
+  const files = Array.isArray(response && response.files) ? response.files : [];
+  const requested = Array.isArray(context && context.include) ? context.include : [];
+
+  const lines = [
+    "Rel.AI follow-up context",
+    "",
+    `Workspace alias: ${workspace}`,
+    `Context mode: ${contextMode}`,
+    prompt ? `Original request or context reason: ${prompt}` : "Original request or context reason: not provided",
+    "",
+    "Instructions:",
+    "- This message satisfies the immediately preceding rel-ai-context request for this same workspace/task.",
+    "- Treat the context below as newly provided additional context, not as a repeat of any earlier ZIP upload.",
+    "- Continue only the active Rel.AI task that matches the workspace and request above; ignore unrelated older Rel.AI requests in this chat.",
+    "- Do not use older Rel.AI ZIP attachments as a substitute for this follow-up bundle.",
+    "- If the uploaded ZIP contents do not match the requested paths listed below, ask for those exact files again with a rel-ai-context block.",
+    "- For any further context request, keep the include array short by using safe subdirectory globs like lib/data/services/** when multiple files from one folder are needed.",
+    "- Only use directory globs in the form subdir/**; do not use workspace-wide **, filename wildcards, absolute paths, or ../ paths.",
+    ""
+  ];
+
+  if (contextMode === "zip") {
+    lines.push("Attached ZIP context:");
+    lines.push(`- The current follow-up ZIP is named ${archiveName}.`);
+    lines.push(`- Inspect ${archiveName}; do not inspect an older Rel.AI ZIP with a similar task name instead.`);
+    lines.push("");
+  }
+
+  if (requested.length > 0) {
+    lines.push("Requested paths from the rel-ai-context block:");
+    for (const item of requested.slice(0, 80)) {
+      lines.push(`- ${item}`);
+    }
+    if (requested.length > 80) {
+      lines.push(`- ... ${requested.length - 80} more requested path(s) omitted from this list`);
+    }
+    lines.push("");
+  }
+
+  if (files.length > 0) {
+    lines.push("Files included in this follow-up bundle:");
+    for (const item of files.slice(0, 80)) {
+      lines.push(`- ${item}`);
+    }
+    if (files.length > 80) {
+      lines.push(`- ... ${files.length - 80} more included file(s) omitted from this list`);
+    }
+    lines.push("");
+  }
+
+  lines.push(response && response.bundle ? response.bundle : "");
+  return lines.join("\n").trim();
+}
+
 async function contextText(text, source, tabId) {
   const parsedContext = RelAiProtocol.parseContextFromText(text);
   const context = await applyRememberedContextPreference(parsedContext, text, source);
@@ -1992,7 +2060,8 @@ async function contextText(text, source, tabId) {
         base64: response.archiveBase64
       }]
       : [];
-    const inserted = await insertRequestIntoTab(tabId, response.bundle, false, attachedFiles);
+    const followUpPrompt = buildFollowUpContextPrompt(context, response);
+    const inserted = await insertRequestIntoTab(tabId, followUpPrompt, false, attachedFiles);
     return {
       ...response,
       inserted: Boolean(inserted && inserted.ok),

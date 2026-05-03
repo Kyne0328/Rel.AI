@@ -200,8 +200,13 @@ function validateContextRequest(value, config) {
   const prompt = optionalString(candidate.prompt, "Context prompt must be a string when provided.")
     || optionalString(candidate.reason, "Context reason must be a string when provided.")
     || optionalString(candidate.acceptableAlternative, "Context acceptableAlternative must be a string when provided.");
-  const includeSource = Array.isArray(candidate.include) ? candidate.include : candidate.neededFiles;
-  const include = validatePathArray(includeSource, Array.isArray(candidate.include) ? "include" : "neededFiles", MAX_CONTEXT_PATTERNS);
+  const includeField = Array.isArray(candidate.include)
+    ? "include"
+    : (Array.isArray(candidate.neededFiles) ? "neededFiles" : "requestedFiles");
+  const includeSource = includeField === "include"
+    ? candidate.include
+    : (includeField === "neededFiles" ? candidate.neededFiles : candidate.requestedFiles);
+  const include = validatePathArray(includeSource, includeField, MAX_CONTEXT_PATTERNS);
   const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
   const contextScope = validateContextScope(candidate.contextScope || candidate.scope);
 
@@ -302,20 +307,40 @@ function validatePathArray(value, label, limit) {
 }
 
 function validateRelativePathLike(item, label) {
-  const file = requireString(item, `${label} must be a string.`).trim().replace(/\\/g, "/");
+  const file = requireString(item, `${label} must be a string.`).trim().replace(/\\/g, "/").replace(/^\.\//, "");
   if (!file) {
     throw new Error(`${label} cannot be empty.`);
   }
   if (file.length > 512) {
     throw new Error(`${label} is too long.`);
   }
-  const safeProbe = file.replace(/\*\*/g, "safe").replace(/\*/g, "safe").replace(/\?/g, "s");
+  if (file === "." || file === "/" || file === "**" || file === "./**") {
+    throw new Error(`${label} is too broad. Request a specific subdirectory like lib/data/services/**.`);
+  }
+  const hasWildcard = /[*?]/.test(file);
+  if (hasWildcard && !isSafeDirectoryGlob(file)) {
+    throw new Error(`${label} may only use the safe directory glob form subdir/**. Other wildcards are not supported.`);
+  }
+  const safeProbe = hasWildcard ? file.slice(0, -3) : file;
   if (safeProbe.startsWith("/") || safeProbe.startsWith("\\") || safeProbe.includes("..") || /^[A-Za-z]:[\/]/.test(safeProbe)) {
     throw new Error(`${label} must be relative and must not contain traversal.`);
   }
-  return file.replace(/^\.\//, "");
+  return file;
 }
 
+function isSafeDirectoryGlob(file) {
+  if (!file.endsWith("/**")) {
+    return false;
+  }
+  const prefix = file.slice(0, -3).replace(/\/+$/g, "");
+  return Boolean(prefix)
+    && prefix !== "."
+    && !/[*?]/.test(prefix)
+    && !prefix.startsWith("/")
+    && !prefix.startsWith("\\")
+    && !/^[A-Za-z]:[\/]/.test(prefix)
+    && !prefix.split("/").includes("..");
+}
 function validateWorkspaceAlias(value, label) {
   const workspace = optionalString(value, `${label} must be a string when provided.`);
   if (workspace === undefined) {

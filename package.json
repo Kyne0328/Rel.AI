@@ -1,7 +1,7 @@
 {
   "name": "rel-ai-chatgpt-request-bridge",
   "private": true,
-  "version": "0.9.38",
+  "version": "0.9.43",
   "description": "Rel.AI builds ChatGPT coding requests from selected workspace context, uploads ZIP context when requested, and applies returned patches locally with Git and optional OpenCode fallback.",
   "license": "MIT",
   "scripts": {

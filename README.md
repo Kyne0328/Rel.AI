@@ -461,6 +461,40 @@ Patch request:
 
 ## Version history
 
+### 0.9.43
+
+- Detects raw JSON rel-ai-context requests even when ChatGPT returns them as plain text after a long prompt with other JSON blocks.
+- Manual context extraction now scans JSON objects from newest to oldest and accepts the first valid context request.
+
+
+### 0.9.42
+
+- Tells ChatGPT to keep follow-up requested-file lists short by using safe subdirectory globs such as `lib/data/services/**` when several files from one folder are needed.
+- Validates context include/exclude globs so only `subdir/**` directory globs are accepted; broad workspace globs, filename wildcards, absolute paths, and traversal are rejected.
+- Adds native-host smoke coverage for preserving safe directory globs and rejecting unsafe wildcard requests.
+
+### 0.9.41
+
+- Wraps follow-up context insertions with explicit Rel.AI follow-up instructions instead of inserting only the raw context bundle.
+- Lists requested paths and included files in follow-up prompts so ChatGPT can detect stale or wrong ZIP attachments.
+- Adds a request boundary to new prompts so older Rel.AI tasks, workspaces, manifests, and ZIPs in the same chat are ignored.
+- Extends browser-side raw JSON detection to `requestedFiles` context requests.
+
+
+### 0.9.40
+
+- Gives every ZIP context upload a content fingerprint in the visible archive name so follow-up requests cannot be confused with an earlier upload that had the same task prompt.
+- Strengthens ChatGPT instructions to treat the current ZIP as authoritative and ignore older Rel.AI ZIP attachments.
+- Clarifies that follow-up context requests should include only additional files, not repeat the previous bundle.
+
+
+### v0.9.39
+
+- Detects raw JSON context requests that use `requestedFiles` instead of `include`.
+- Maps `requestedFiles` into the normal Rel.AI context include list in both browser-side and native-host validation.
+- Generated prompts now explicitly tell ChatGPT to use `include` for new `rel-ai-context` requests.
+- Bumps package and extension versions to `0.9.39`.
+
 ### v0.9.38
 
 - Follow-up `rel-ai-context` requests now inherit the original request packing mode by workspace. If the original request used ZIP mode, requested follow-up files are returned as a ZIP; if it used readable text, follow-up files are returned as readable text.

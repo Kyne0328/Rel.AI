@@ -17,27 +17,71 @@
   }
 
   function extractJsonPayload(input, fenceRe, emptyMessage) {
+    const payloads = extractJsonPayloads(input, fenceRe, emptyMessage);
+    return payloads[payloads.length - 1];
+  }
+
+  function extractJsonPayloads(input, fenceRe, emptyMessage) {
     const text = String(input || "").trim();
     if (!text) {
       throw new Error(emptyMessage);
     }
 
-    const matches = [...text.matchAll(fenceRe)];
+    const matches = [...text.matchAll(fenceRe)].map((match) => match[1].trim()).filter(Boolean);
     if (matches.length > 0) {
-      return matches[matches.length - 1][1].trim();
+      return matches;
     }
 
-    if (text.startsWith("{") && text.endsWith("}")) {
-      return text;
-    }
-
-    const firstBrace = text.indexOf("{");
-    const lastBrace = text.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      return text.slice(firstBrace, lastBrace + 1).trim();
+    const candidates = extractJsonObjectTexts(text);
+    if (candidates.length > 0) {
+      return candidates;
     }
 
     throw new Error("No JSON payload found.");
+  }
+
+  function extractJsonObjectTexts(text) {
+    const raw = String(text || "");
+    const candidates = [];
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === "\\") {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "{") {
+        if (depth === 0) {
+          start = i;
+        }
+        depth += 1;
+        continue;
+      }
+      if (ch === "}" && depth > 0) {
+        depth -= 1;
+        if (depth === 0 && start !== -1) {
+          candidates.push(raw.slice(start, i + 1).trim());
+          start = -1;
+        }
+      }
+    }
+
+    return candidates;
   }
 
   function parseApplyFromText(input) {
@@ -157,14 +201,17 @@
   }
 
   function parseContextFromText(input) {
-    const payload = extractJsonPayload(input, CONTEXT_FENCE_RE, "No context request text provided.");
-    let parsed;
-    try {
-      parsed = JSON.parse(payload);
-    } catch (error) {
-      throw new Error(`Invalid context JSON: ${error && error.message ? error.message : String(error)}`);
+    const payloads = extractJsonPayloads(input, CONTEXT_FENCE_RE, "No context request text provided.");
+    let lastError = null;
+    for (let i = payloads.length - 1; i >= 0; i -= 1) {
+      try {
+        const parsed = JSON.parse(payloads[i]);
+        return validateContextRequest(parsed);
+      } catch (error) {
+        lastError = error;
+      }
     }
-    return validateContextRequest(parsed);
+    throw new Error(`Invalid context JSON: ${lastError && lastError.message ? lastError.message : String(lastError)}`);
   }
 
   function validateApply(value) {
@@ -229,8 +276,13 @@
     const prompt = optionalString(candidate.prompt, "prompt must be a string when provided.")
       || optionalString(candidate.reason, "reason must be a string when provided.")
       || optionalString(candidate.acceptableAlternative, "acceptableAlternative must be a string when provided.");
-    const includeSource = Array.isArray(candidate.include) ? candidate.include : candidate.neededFiles;
-    const include = validatePathArray(includeSource, Array.isArray(candidate.include) ? "include" : "neededFiles", MAX_CONTEXT_PATTERNS);
+    const includeField = Array.isArray(candidate.include)
+      ? "include"
+      : (Array.isArray(candidate.neededFiles) ? "neededFiles" : "requestedFiles");
+    const includeSource = includeField === "include"
+      ? candidate.include
+      : (includeField === "neededFiles" ? candidate.neededFiles : candidate.requestedFiles);
+    const include = validatePathArray(includeSource, includeField, MAX_CONTEXT_PATTERNS);
     const exclude = validatePathArray(candidate.exclude, "exclude", MAX_CONTEXT_PATTERNS);
     const contextScope = validateContextScope(candidate.contextScope || candidate.scope);
     if (include.length === 0 && contextScope !== "full") {
@@ -319,20 +371,40 @@ function validateFallback(value) {
   }
 
   function validateRelativePathLike(item, label) {
-    const file = requireString(item, `${label} must be a string.`).trim().replace(/\\/g, "/");
+    const file = requireString(item, `${label} must be a string.`).trim().replace(/\\/g, "/").replace(/^\.\//, "");
     if (!file) {
       throw new Error(`${label} cannot be empty.`);
     }
     if (file.length > 512) {
       throw new Error(`${label} is too long.`);
     }
-    const safeProbe = file.replace(/\*\*/g, "safe").replace(/\*/g, "safe").replace(/\?/g, "s");
+    if (file === "." || file === "/" || file === "**" || file === "./**") {
+      throw new Error(`${label} is too broad. Request a specific subdirectory like lib/data/services/**.`);
+    }
+    const hasWildcard = /[*?]/.test(file);
+    if (hasWildcard && !isSafeDirectoryGlob(file)) {
+      throw new Error(`${label} may only use the safe directory glob form subdir/**. Other wildcards are not supported.`);
+    }
+    const safeProbe = hasWildcard ? file.slice(0, -3) : file;
     if (safeProbe.startsWith("/") || safeProbe.startsWith("\\") || safeProbe.includes("..") || /^[A-Za-z]:[\/]/.test(safeProbe)) {
       throw new Error(`${label} must be relative and must not contain traversal.`);
     }
-    return file.replace(/^\.\//, "");
+    return file;
   }
 
+  function isSafeDirectoryGlob(file) {
+    if (!file.endsWith("/**")) {
+      return false;
+    }
+    const prefix = file.slice(0, -3).replace(/\/+$/g, "");
+    return Boolean(prefix)
+      && prefix !== "."
+      && !/[*?]/.test(prefix)
+      && !prefix.startsWith("/")
+      && !prefix.startsWith("\\")
+      && !/^[A-Za-z]:[\/]/.test(prefix)
+      && !prefix.split("/").includes("..");
+  }
   function validateWorkspaceAlias(value, label) {
     const workspace = optionalString(value, `${label} must be a string when provided.`);
     if (workspace !== undefined && !/^[A-Za-z0-9._-]{1,64}$/.test(workspace)) {
@@ -440,7 +512,7 @@ function validateFallback(value) {
   function looksLikeContext(text) {
     const raw = String(text || "");
     return /```(?:rel-ai-context|relai-context|rel-ai-source|relai-source)/i.test(raw)
-      || (/'?"?version'?"?\s*:\s*1/.test(raw) && (/"include"\s*:/.test(raw) || /"neededFiles"\s*:/.test(raw)));
+      || (/'?"?version'?"?\s*:\s*1/.test(raw) && (/"include"\s*:/.test(raw) || /"neededFiles"\s*:/.test(raw) || /"requestedFiles"\s*:/.test(raw)));
   }
 
   function optionalPositiveInteger(value, message) {

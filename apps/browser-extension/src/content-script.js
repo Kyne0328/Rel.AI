@@ -756,7 +756,7 @@
     return Boolean(parsed
       && parsed.version === 1
       && typeof parsed.workspace === "string"
-      && (Array.isArray(parsed.include) || Array.isArray(parsed.neededFiles)));
+      && (Array.isArray(parsed.include) || Array.isArray(parsed.neededFiles) || Array.isArray(parsed.requestedFiles)));
   }
 
   function looksLikePlanBlock(text) {
@@ -810,16 +810,16 @@
 
   function parseJsonObjectFromBlockText(text) {
     const body = stripRenderedLanguageLabel(stripFence(String(text || "").trim()));
-    const candidate = extractJsonObjectText(body);
-    if (!candidate) {
-      return null;
+    const candidates = extractJsonObjectTexts(body);
+    for (let i = candidates.length - 1; i >= 0; i -= 1) {
+      try {
+        const parsed = JSON.parse(candidates[i]);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (_error) {}
     }
-    try {
-      const parsed = JSON.parse(candidate);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-    } catch (_error) {
-      return null;
-    }
+    return null;
   }
 
   function stripFence(text) {
@@ -828,19 +828,52 @@
   }
 
   function extractJsonObjectText(text) {
-    const trimmed = String(text || "").trim();
-    if (!trimmed) {
-      return "";
+    const candidates = extractJsonObjectTexts(text);
+    return candidates.length ? candidates[candidates.length - 1] : "";
+  }
+
+  function extractJsonObjectTexts(text) {
+    const raw = String(text || "");
+    const candidates = [];
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < raw.length; i += 1) {
+      const ch = raw[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === "\\") {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "{") {
+        if (depth === 0) {
+          start = i;
+        }
+        depth += 1;
+        continue;
+      }
+      if (ch === "}" && depth > 0) {
+        depth -= 1;
+        if (depth === 0 && start !== -1) {
+          candidates.push(raw.slice(start, i + 1).trim());
+          start = -1;
+        }
+      }
     }
-    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-      return trimmed;
-    }
-    const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      return trimmed.slice(firstBrace, lastBrace + 1).trim();
-    }
-    return "";
+
+    return candidates;
   }
 
   function insertTextIntoComposer(text, submit) {
