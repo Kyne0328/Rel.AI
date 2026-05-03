@@ -1,9 +1,10 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.22";
+const EXTENSION_VERSION = "0.9.23";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
+let _debugLogEnabled = false;
 
 function relaiLog(stage, details) {
   const entry = {
@@ -12,12 +13,14 @@ function relaiLog(stage, details) {
     details: sanitizeDebugDetails(details)
   };
 
-  try { console.log("[Rel.AI]", entry.stage, entry.details); } catch (_error) {}
+  try { console.debug("[Rel.AI]", entry.stage, entry.details); } catch (_error) {}
+
+  if (!_debugLogEnabled) return;
 
   try {
     const gen = _debugLogGeneration;
     chrome.storage.local.get({ [DEBUG_LOG_KEY]: [] }, (stored) => {
-      if (_debugLogGeneration !== gen) return;
+      if (_debugLogGeneration !== gen || !_debugLogEnabled) return;
       const list = Array.isArray(stored[DEBUG_LOG_KEY]) ? stored[DEBUG_LOG_KEY] : [];
       list.push(entry);
       chrome.storage.local.set({ [DEBUG_LOG_KEY]: list.slice(-300) });
@@ -155,7 +158,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleMessage(message, sender) {
-  const isDebugMetaMessage = message && (message.type === "relai.getDebugLog" || message.type === "relai.clearDebugLog");
+  const isDebugMetaMessage = message && (message.type === "relai.getDebugLog" || message.type === "relai.clearDebugLog" || message.type === "relai.setDebugLogging");
   if (!isDebugMetaMessage) {
     relaiLog("background.message.received", {
       message: summarizeMessageForDebug(message),
@@ -171,6 +174,11 @@ async function handleMessage(message, sender) {
   if (message.type === "relai.dashboardLog") {
     relaiLog(message.stage || "dashboard.event", message.details || {});
     return { ok: true, type: "relai.dashboardLog" };
+  }
+
+  if (message.type === "relai.setDebugLogging") {
+    _debugLogEnabled = Boolean(message.enabled);
+    return { ok: true, type: "relai.debugLogging", enabled: _debugLogEnabled };
   }
 
   if (message.type === "relai.applyManual") {
@@ -1097,71 +1105,81 @@ function showRelAiArchiveDragChipInPage(files) {
 
 async function insertRequestIntoTab(tabId, text, submit, files) {
   const safeFiles = Array.isArray(files) ? files : [];
-  relaiLog("insertRequestIntoTab.start", { tabId, submit: Boolean(submit), textLength: String(text || "").length, fileCount: safeFiles.length, files: safeFiles.map((file) => ({ name: file && file.name, hasPath: Boolean(file && file.path), hasBase64: Boolean(file && file.base64) })) });
-  // Do not try debugger/CDP upload before page-context drag/drop.
-  // The user's logs showed ChatGPT accepts the MAIN-world drag/drop path, while
-  // CDP/file-chooser attempts add 30-40s of delay and can leave the upload overlay stuck.
-  let preUploaded = null;
+  relaiLog("insertRequestIntoTab.start", {
+    tabId,
+    submit: Boolean(submit),
+    textLength: String(text || "").length,
+    fileCount: safeFiles.length,
+    mode: "fast-main-world-drag-drop",
+    files: safeFiles.map((file) => ({
+      name: file && file.name,
+      hasPath: Boolean(file && file.path),
+      hasBase64: Boolean(file && file.base64)
+    }))
+  });
 
-  // File upload events must be generated in the page's MAIN world when possible.
-  // ChatGPT's uploader listens on the app side of the page; events from the extension
-  // isolated world can look correct but fail to reach the React/dropzone handlers.
-  const attempts = [
-    { world: "MAIN", label: "main-world" },
-    { world: "ISOLATED", label: "isolated-world" }
-  ];
+  // Optimized path: the user's logs showed ChatGPT accepts MAIN-world drag/drop,
+  // while debugger/file-picker fallbacks add long delays and can leave the upload overlay stuck.
+  // Keep one fast MAIN-world attempt. If it cannot confirm upload, show the draggable ZIP fallback.
+  try {
+    const details = {
+      target: { tabId },
+      world: "MAIN",
+      func: insertRelAiRequestInPage,
+      args: [text, Boolean(submit), safeFiles, null]
+    };
+    relaiLog("scripting.insert.execute", { tabId, world: "MAIN", filesPassed: safeFiles.length, fastPath: true });
+    const results = await chrome.scripting.executeScript(details);
+    const result = results && results[0] && results[0].result
+      ? results[0].result
+      : { ok: false, message: "Insert/upload script returned no result." };
 
-  let lastError = null;
-  for (const attempt of attempts) {
-    try {
-      const details = {
-        target: { tabId },
-        func: insertRelAiRequestInPage,
-        args: [text, Boolean(submit), preUploaded && preUploaded.uploaded ? [] : safeFiles, preUploaded]
-      };
-      if (attempt.world) {
-        details.world = attempt.world;
+    result.executionWorld = "main-world";
+
+    if (safeFiles.length > 0 && !result.uploaded) {
+      relaiLog("chip.auto.start", { tabId, reason: "fast-upload-not-confirmed", result });
+      const chip = await showArchiveDragChipInTab(tabId, safeFiles);
+      relaiLog("chip.auto.result", chip);
+      result.dragChipShown = Boolean(chip && chip.ok);
+      result.dragChipMessage = chip && (chip.message || chip.error);
+      if (!result.uploadError && chip && chip.ok) {
+        result.uploadError = "Automatic upload was not confirmed; a draggable ZIP chip was added to the ChatGPT tab.";
       }
-      relaiLog("scripting.insert.execute", { tabId, world: attempt.world, filesPassed: safeFiles.length });
-      const results = await chrome.scripting.executeScript(details);
+    }
+
+    return result;
+  } catch (mainError) {
+    const mainMessage = mainError instanceof Error ? mainError.message : String(mainError);
+    relaiLog("scripting.insert.mainWorld.failed", { tabId, error: mainMessage });
+
+    // Last-resort insertion only. Do not attempt file upload in ISOLATED world because it is slower
+    // and usually cannot reach ChatGPT's React/dropzone handlers reliably.
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        world: "ISOLATED",
+        func: insertRelAiRequestInPage,
+        args: [text, Boolean(submit), [], null]
+      });
       const result = results && results[0] && results[0].result
         ? results[0].result
-        : { ok: false, message: "Insert/upload script returned no result." };
+        : { ok: false, message: "Fallback insert script returned no result." };
+      result.executionWorld = "isolated-world-text-only";
 
-      result.executionWorld = attempt.label;
-      if (result.ok || attempt.world === "ISOLATED") {
-        if (safeFiles.length > 0 && (!result.uploaded)) {
-          relaiLog("debuggerFallback.start", { tabId, reason: "page-upload-not-confirmed", result });
-          const debuggerAttempt = await uploadFilesWithDebuggerFallbacks(tabId, safeFiles);
-          relaiLog("debuggerFallback.result", debuggerAttempt);
-          if (debuggerAttempt && debuggerAttempt.uploaded) {
-            result.uploaded = true;
-            result.uploadMethod = debuggerAttempt.uploadMethod;
-            result.uploadError = debuggerAttempt.uploadError || result.uploadError;
-          } else {
-            const combinedError = [result.uploadError, debuggerAttempt && debuggerAttempt.uploadError].filter(Boolean).join(" | ");
-            if (combinedError) result.uploadError = combinedError;
-          }
-        }
-        if (safeFiles.length > 0 && (!result.uploaded)) {
-          relaiLog("chip.auto.start", { tabId, reason: "upload-not-confirmed", result });
-          const chip = await showArchiveDragChipInTab(tabId, safeFiles);
-          relaiLog("chip.auto.result", chip);
-          result.dragChipShown = Boolean(chip && chip.ok);
-          result.dragChipMessage = chip && (chip.message || chip.error);
-          if (!result.uploadError && chip && chip.ok) {
-            result.uploadError = "Automatic upload was not confirmed; a draggable ZIP chip was added to the ChatGPT tab.";
-          }
-        }
-        return result;
+      if (safeFiles.length > 0) {
+        const chip = await showArchiveDragChipInTab(tabId, safeFiles);
+        result.dragChipShown = Boolean(chip && chip.ok);
+        result.dragChipMessage = chip && (chip.message || chip.error);
+        result.uploaded = false;
+        result.uploadMethod = "manual-chip";
+        result.uploadError = "Automatic upload could not run in MAIN world. A draggable ZIP chip was added instead.";
       }
-      lastError = result.message || result.uploadError || "Upload/insert failed in MAIN world.";
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
+      return result;
+    } catch (isolatedError) {
+      const isolatedMessage = isolatedError instanceof Error ? isolatedError.message : String(isolatedError);
+      return { ok: false, message: `Could not insert request. MAIN world failed: ${mainMessage}; fallback failed: ${isolatedMessage}` };
     }
   }
-
-  return { ok: false, message: lastError || "Could not insert request or upload file." };
 }
 
 async function uploadFilesWithDebuggerFallbacks(tabId, files) {
@@ -1624,41 +1642,32 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
     try { return new DataTransfer(); } catch (_error) { return null; }
   }
 
-  function dispatchDragExitEvents() {
-    const targets = [...getDropTargets(), window, document, document.body, document.documentElement].filter(Boolean);
+  function dispatchLightDragExit() {
+    const targets = [findComposer(), document.body, document.documentElement, document].filter(Boolean);
     for (const target of [...new Set(targets)]) {
-      for (const type of ['dragleave', 'dragend', 'drop']) {
-        try {
-          const dt = makeEmptyTransfer();
-          const init = { bubbles: true, cancelable: true, composed: true };
-          if (dt) init.dataTransfer = dt;
-          target.dispatchEvent(new DragEvent(type, init));
-        } catch (_error) {
-          try { target.dispatchEvent(new Event(type, { bubbles: true, cancelable: true, composed: true })); } catch (__error) {}
-        }
-      }
-      for (const type of ['pointerup', 'pointerleave', 'mouseup', 'mouseleave']) {
-        try { target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true })); } catch (_error) {
-          try { target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, composed: true })); } catch (__error) {}
-        }
+      try {
+        const dt = makeEmptyTransfer();
+        const init = { bubbles: true, cancelable: true, composed: true };
+        if (dt) init.dataTransfer = dt;
+        target.dispatchEvent(new DragEvent('dragleave', init));
+      } catch (_error) {
+        try { target.dispatchEvent(new Event('dragleave', { bubbles: true, cancelable: true, composed: true })); } catch (__error) {}
       }
     }
   }
 
   function pressEscape() {
-    for (const type of ['keydown', 'keyup']) {
-      try {
-        document.dispatchEvent(new KeyboardEvent(type, {
-          key: 'Escape',
-          code: 'Escape',
-          keyCode: 27,
-          which: 27,
-          bubbles: true,
-          cancelable: true,
-          composed: true
-        }));
-      } catch (_error) {}
-    }
+    try {
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        keyCode: 27,
+        which: 27,
+        bubbles: true,
+        cancelable: true,
+        composed: true
+      }));
+    } catch (_error) {}
   }
 
   function hideStuckDropOverlays() {
@@ -1725,30 +1734,30 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
     return hidden;
   }
 
-
   async function dismissUploadOverlay() {
-    for (let i = 0; i < 4; i += 1) {
-      dispatchDragExitEvents();
-      pressEscape();
-      hideStuckDropOverlays();
-      await sleep(120);
-    }
+    // Fast cleanup: a single dragleave plus Escape is usually enough. The targeted overlay hide
+    // remains as a safety net, but repeated dragend/drop/pointer/mouse storms were removed.
+    dispatchLightDragExit();
+    pressEscape();
+    hideStuckDropOverlays();
+    await sleep(50);
   }
 
   async function tryDragDropUpload(fileObjects, label) {
-    for (const target of getDropTargets()) {
+    const targets = getDropTargets().slice(0, 4);
+    for (const target of targets) {
       try {
         dispatchDragSequenceToTarget(fileObjects, target);
-        if (await waitForAttachmentConfirmation(fileObjects, 2200)) {
+        if (await waitForAttachmentConfirmation(fileObjects, 1800)) {
           await dismissUploadOverlay();
-          setTimeout(() => { dismissUploadOverlay().catch(() => {}); }, 400);
-          setTimeout(() => { dismissUploadOverlay().catch(() => {}); }, 1200);
+          setTimeout(() => { dismissUploadOverlay().catch(() => {}); }, 350);
           return { uploaded: true, uploadMethod: label };
         }
       } catch (_error) {
         // Try the next candidate target.
       }
     }
+    await dismissUploadOverlay();
     return { uploaded: false, uploadMethod: label, uploadError: "ChatGPT did not show the ZIP attachment after drag/drop." };
   }
 
@@ -1787,53 +1796,19 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
   }
 
   async function uploadFiles(fileItems) {
-    if (preUploaded && preUploaded.uploaded) {
-      return preUploaded;
-    }
     if (!Array.isArray(fileItems) || fileItems.length === 0) {
-      return preUploaded || { uploaded: false, uploadMethod: "none" };
+      return { uploaded: false, uploadMethod: "none" };
     }
+
     const fileObjects = fileItems.map(makeFile);
-    const errors = [];
-    if (preUploaded && preUploaded.uploadError) {
-      errors.push(`${preUploaded.uploadMethod || "debugger"}: ${preUploaded.uploadError}`);
-    }
-
-    // Manual ZIP upload works when dropped onto ChatGPT, so synthetic drag/drop is the primary path.
-    // The file-input/menu paths are retained only as fallbacks.
-    let result = await tryDragDropUpload(fileObjects, "main-world-drag-drop");
+    const result = await tryDragDropUpload(fileObjects, "main-world-drag-drop");
     if (result.uploaded) return result;
-    errors.push(`${result.uploadMethod}: ${result.uploadError || "not accepted"}`);
 
-    result = await tryPasteUpload(fileObjects);
-    if (result.uploaded) return result;
-    errors.push(`${result.uploadMethod}: ${result.uploadError || "not accepted"}`);
-
-    result = await tryFileInputUpload(fileObjects, "file-input");
-    if (result.uploaded) return result;
-    errors.push(`${result.uploadMethod}: ${result.uploadError || "not accepted"}`);
-
-    const trigger = findAttachTrigger();
-    if (trigger) {
-      trigger.click();
-      await sleep(250);
-    }
-
-    const menuItem = findAddPhotosMenuItem();
-    if (menuItem) {
-      menuItem.click();
-      await sleep(300);
-    }
-
-    result = await tryFileInputUpload(fileObjects, "menu-file-input");
-    if (result.uploaded) return result;
-    errors.push(`${result.uploadMethod}: ${result.uploadError || "not accepted"}`);
-
-    result = await tryDragDropUpload(fileObjects, "final-drag-drop");
-    if (result.uploaded) return result;
-    errors.push(`${result.uploadMethod}: ${result.uploadError || "not accepted"}`);
-
-    return { uploaded: false, uploadMethod: "failed", uploadError: errors.join(" | ") };
+    return {
+      uploaded: false,
+      uploadMethod: "main-world-drag-drop",
+      uploadError: result.uploadError || "ChatGPT did not confirm the ZIP attachment. Use the draggable ZIP chip fallback."
+    };
   }
 
   return (async () => {

@@ -303,16 +303,25 @@ Diagnostics are hidden by default. Open the Rel.AI dashboard and press **Ctrl+Sh
 
 Use diagnostics only when troubleshooting bridge, ZIP attachment, or patch-apply behavior. The log is stored locally by the extension and is not sent anywhere unless you copy it.
 
-## Version 0.9.22
+## Version 0.9.23
 
 - Dismisses ChatGPT's stuck drag-and-drop upload overlay after ZIP attachment attempts.
 - Keeps diagnostics hidden by default; press Ctrl+Shift+D in the dashboard to reveal them.
 - Updates dashboard copy to use release-ready product language.
 
 
-## v0.9.22
+## v0.9.23
 
 - Uses ChatGPT MAIN-world drag/drop as the primary ZIP upload path.
 - Moves Chrome debugger/CDP upload methods behind the page-context upload path.
 - Improves cleanup for stuck ChatGPT upload overlays after ZIP upload.
 - Keeps diagnostics hidden behind Ctrl+Shift+D in the Rel.AI dashboard.
+
+
+## v0.9.23
+
+- Optimizes ZIP upload for the confirmed MAIN-world drag/drop path.
+- Removes debugger permission and slow CDP/file-picker upload attempts from the default flow.
+- Reduces upload overlay cleanup to a lightweight dragleave/Escape pass plus targeted overlay hiding.
+- Keeps the draggable ZIP chip as the fallback when automatic upload is not confirmed.
+- Disables persistent debug-log writes unless the hidden diagnostics panel is enabled.
