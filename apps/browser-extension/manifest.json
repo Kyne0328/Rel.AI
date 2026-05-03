@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Rel.AI ChatGPT Request Bridge",
-  "version": "0.9.15",
-  "description": "Build ChatGPT requests with readable context or a real uploaded ZIP file, preview diffs, then apply with git and OpenCode fallback controls.",
+  "name": "Rel.AI",
+  "version": "0.9.22",
+  "description": "Build ChatGPT coding requests from selected local workspace context and apply returned patches through the Rel.AI bridge.",
   "permissions": [
     "activeTab",
     "contextMenus",

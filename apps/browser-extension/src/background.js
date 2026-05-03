@@ -1,7 +1,7 @@
 importScripts("protocol.js");
 
 const HOST_NAME = "com.relai.request_builder";
-const EXTENSION_VERSION = "0.9.19";
+const EXTENSION_VERSION = "0.9.22";
 const DEBUG_LOG_KEY = "relaiDebugLog";
 let _debugLogGeneration = 0;
 
@@ -873,7 +873,7 @@ async function showArchiveDragChipInTab(tabId, files) {
       if (attempt.world) {
         details.world = attempt.world;
       }
-      relaiLog("scripting.insert.execute", { tabId, world: attempt.world, filesPassed: preUploaded && preUploaded.uploaded ? 0 : safeFiles.length });
+      relaiLog("scripting.chip.execute", { tabId, world: attempt.world, filesPassed: safeFiles.length });
       const results = await chrome.scripting.executeScript(details);
       const result = results && results[0] && results[0].result
         ? results[0].result
@@ -1098,41 +1098,10 @@ function showRelAiArchiveDragChipInPage(files) {
 async function insertRequestIntoTab(tabId, text, submit, files) {
   const safeFiles = Array.isArray(files) ? files : [];
   relaiLog("insertRequestIntoTab.start", { tabId, submit: Boolean(submit), textLength: String(text || "").length, fileCount: safeFiles.length, files: safeFiles.map((file) => ({ name: file && file.name, hasPath: Boolean(file && file.path), hasBase64: Boolean(file && file.base64) })) });
+  // Do not try debugger/CDP upload before page-context drag/drop.
+  // The user's logs showed ChatGPT accepts the MAIN-world drag/drop path, while
+  // CDP/file-chooser attempts add 30-40s of delay and can leave the upload overlay stuck.
   let preUploaded = null;
-
-  if (safeFiles.some((file) => file && file.path)) {
-    const uploadErrors = [];
-    relaiLog("upload.cdpDragDrop.start", { tabId, files: safeFiles.map((file) => ({ name: file.name, path: file.path })) });
-    preUploaded = await uploadFilesWithCdpDragDrop(tabId, safeFiles);
-    relaiLog("upload.cdpDragDrop.result", preUploaded);
-    if (preUploaded && !preUploaded.uploaded) {
-      uploadErrors.push(`${preUploaded.uploadMethod || "cdp-drag-drop"}: ${preUploaded.uploadError || "not accepted"}`);
-    }
-    if (!preUploaded || !preUploaded.uploaded) {
-      relaiLog("upload.fileChooser.start", { tabId });
-      const chooserAttempt = await uploadFilesWithFileChooserDebugger(tabId, safeFiles);
-      relaiLog("upload.fileChooser.result", chooserAttempt);
-      if (chooserAttempt && chooserAttempt.uploaded) {
-        preUploaded = chooserAttempt;
-      } else if (chooserAttempt) {
-        uploadErrors.push(`${chooserAttempt.uploadMethod || "debugger-file-chooser"}: ${chooserAttempt.uploadError || "not accepted"}`);
-        preUploaded = chooserAttempt;
-      }
-    }
-    if (!preUploaded || !preUploaded.uploaded) {
-      relaiLog("upload.setFileInput.start", { tabId });
-      const secondAttempt = await uploadFilesWithDebugger(tabId, safeFiles);
-      relaiLog("upload.setFileInput.result", secondAttempt);
-      if (secondAttempt && secondAttempt.uploaded) {
-        preUploaded = secondAttempt;
-      } else if (secondAttempt) {
-        uploadErrors.push(`${secondAttempt.uploadMethod || "debugger-set-file-input"}: ${secondAttempt.uploadError || "not accepted"}`);
-      }
-    }
-    if (preUploaded && !preUploaded.uploaded && uploadErrors.length > 0) {
-      preUploaded.uploadError = uploadErrors.join(" | ");
-    }
-  }
 
   // File upload events must be generated in the page's MAIN world when possible.
   // ChatGPT's uploader listens on the app side of the page; events from the extension
@@ -1153,7 +1122,7 @@ async function insertRequestIntoTab(tabId, text, submit, files) {
       if (attempt.world) {
         details.world = attempt.world;
       }
-      relaiLog("scripting.insert.execute", { tabId, world: attempt.world, filesPassed: preUploaded && preUploaded.uploaded ? 0 : safeFiles.length });
+      relaiLog("scripting.insert.execute", { tabId, world: attempt.world, filesPassed: safeFiles.length });
       const results = await chrome.scripting.executeScript(details);
       const result = results && results[0] && results[0].result
         ? results[0].result
@@ -1161,6 +1130,19 @@ async function insertRequestIntoTab(tabId, text, submit, files) {
 
       result.executionWorld = attempt.label;
       if (result.ok || attempt.world === "ISOLATED") {
+        if (safeFiles.length > 0 && (!result.uploaded)) {
+          relaiLog("debuggerFallback.start", { tabId, reason: "page-upload-not-confirmed", result });
+          const debuggerAttempt = await uploadFilesWithDebuggerFallbacks(tabId, safeFiles);
+          relaiLog("debuggerFallback.result", debuggerAttempt);
+          if (debuggerAttempt && debuggerAttempt.uploaded) {
+            result.uploaded = true;
+            result.uploadMethod = debuggerAttempt.uploadMethod;
+            result.uploadError = debuggerAttempt.uploadError || result.uploadError;
+          } else {
+            const combinedError = [result.uploadError, debuggerAttempt && debuggerAttempt.uploadError].filter(Boolean).join(" | ");
+            if (combinedError) result.uploadError = combinedError;
+          }
+        }
         if (safeFiles.length > 0 && (!result.uploaded)) {
           relaiLog("chip.auto.start", { tabId, reason: "upload-not-confirmed", result });
           const chip = await showArchiveDragChipInTab(tabId, safeFiles);
@@ -1180,6 +1162,35 @@ async function insertRequestIntoTab(tabId, text, submit, files) {
   }
 
   return { ok: false, message: lastError || "Could not insert request or upload file." };
+}
+
+async function uploadFilesWithDebuggerFallbacks(tabId, files) {
+  const safeFiles = Array.isArray(files) ? files.filter((file) => file && file.path) : [];
+  if (safeFiles.length === 0) {
+    return { uploaded: false, uploadMethod: "debugger-unavailable", uploadError: "No file path available for debugger fallback." };
+  }
+
+  const errors = [];
+
+  relaiLog("upload.setFileInput.start", { tabId });
+  const setInputAttempt = await uploadFilesWithDebugger(tabId, safeFiles);
+  relaiLog("upload.setFileInput.result", setInputAttempt);
+  if (setInputAttempt && setInputAttempt.uploaded) return setInputAttempt;
+  if (setInputAttempt) errors.push(`${setInputAttempt.uploadMethod || "debugger-set-file-input"}: ${setInputAttempt.uploadError || "not accepted"}`);
+
+  relaiLog("upload.fileChooser.start", { tabId });
+  const chooserAttempt = await uploadFilesWithFileChooserDebugger(tabId, safeFiles);
+  relaiLog("upload.fileChooser.result", chooserAttempt);
+  if (chooserAttempt && chooserAttempt.uploaded) return chooserAttempt;
+  if (chooserAttempt) errors.push(`${chooserAttempt.uploadMethod || "debugger-file-chooser"}: ${chooserAttempt.uploadError || "not accepted"}`);
+
+  relaiLog("upload.cdpDragDrop.start", { tabId, files: safeFiles.map((file) => ({ name: file.name, path: file.path })) });
+  const dragDropAttempt = await uploadFilesWithCdpDragDrop(tabId, safeFiles);
+  relaiLog("upload.cdpDragDrop.result", dragDropAttempt);
+  if (dragDropAttempt && dragDropAttempt.uploaded) return dragDropAttempt;
+  if (dragDropAttempt) errors.push(`${dragDropAttempt.uploadMethod || "cdp-drag-drop"}: ${dragDropAttempt.uploadError || "not accepted"}`);
+
+  return { uploaded: false, uploadMethod: "debugger-fallbacks", uploadError: errors.join(" | ") || "Debugger fallback upload did not confirm an attachment." };
 }
 
 async function insertTextIntoTab(tabId, text, submit) {
@@ -1609,11 +1620,129 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
     return false;
   }
 
+  function makeEmptyTransfer() {
+    try { return new DataTransfer(); } catch (_error) { return null; }
+  }
+
+  function dispatchDragExitEvents() {
+    const targets = [...getDropTargets(), window, document, document.body, document.documentElement].filter(Boolean);
+    for (const target of [...new Set(targets)]) {
+      for (const type of ['dragleave', 'dragend', 'drop']) {
+        try {
+          const dt = makeEmptyTransfer();
+          const init = { bubbles: true, cancelable: true, composed: true };
+          if (dt) init.dataTransfer = dt;
+          target.dispatchEvent(new DragEvent(type, init));
+        } catch (_error) {
+          try { target.dispatchEvent(new Event(type, { bubbles: true, cancelable: true, composed: true })); } catch (__error) {}
+        }
+      }
+      for (const type of ['pointerup', 'pointerleave', 'mouseup', 'mouseleave']) {
+        try { target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true })); } catch (_error) {
+          try { target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, composed: true })); } catch (__error) {}
+        }
+      }
+    }
+  }
+
+  function pressEscape() {
+    for (const type of ['keydown', 'keyup']) {
+      try {
+        document.dispatchEvent(new KeyboardEvent(type, {
+          key: 'Escape',
+          code: 'Escape',
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+          cancelable: true,
+          composed: true
+        }));
+      } catch (_error) {}
+    }
+  }
+
+  function hideStuckDropOverlays() {
+    const phrases = [
+      /drop any file here to add it to the conversation/i,
+      /add anything/i,
+      /drop\s+.*file\s+.*conversation/i,
+      /drop.*file.*here/i
+    ];
+
+    function textMatches(node) {
+      const text = String(node && node.textContent || '').replace(/\s+/g, ' ').trim();
+      return text && text.length < 1000 && phrases.some((pattern) => pattern.test(text));
+    }
+
+    function overlayScore(node) {
+      if (!node || node === document.body || node === document.documentElement || !node.getBoundingClientRect) return -1;
+      const rect = node.getBoundingClientRect();
+      const style = window.getComputedStyle(node);
+      const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+      const viewportArea = Math.max(1, innerWidth * innerHeight);
+      let score = 0;
+      if (style.position === 'fixed') score += 50;
+      if (style.position === 'absolute') score += 20;
+      if (Number(style.zIndex || 0) >= 10) score += 10;
+      if (area / viewportArea > 0.20) score += 30;
+      if (rect.top <= 80 && rect.left <= 80 && rect.bottom >= innerHeight * 0.5) score += 20;
+      return score;
+    }
+
+    const candidates = [];
+    const matchingNodes = Array.from(document.querySelectorAll('body *')).filter((node) => {
+      try { return textMatches(node) && isVisible(node); } catch (_error) { return false; }
+    });
+
+    for (const node of matchingNodes) {
+      let best = node;
+      let bestScore = overlayScore(node);
+      let current = node.parentElement;
+      let steps = 0;
+      while (current && current !== document.body && current !== document.documentElement && steps < 8) {
+        const score = overlayScore(current);
+        if (score > bestScore) {
+          best = current;
+          bestScore = score;
+        }
+        current = current.parentElement;
+        steps += 1;
+      }
+      candidates.push(best);
+    }
+
+    let hidden = 0;
+    for (const node of [...new Set(candidates)]) {
+      try {
+        node.setAttribute('data-relai-hidden-stuck-upload-overlay', 'true');
+        node.style.setProperty('display', 'none', 'important');
+        node.style.setProperty('pointer-events', 'none', 'important');
+        node.style.setProperty('opacity', '0', 'important');
+        node.style.setProperty('visibility', 'hidden', 'important');
+        hidden += 1;
+      } catch (_error) {}
+    }
+    return hidden;
+  }
+
+
+  async function dismissUploadOverlay() {
+    for (let i = 0; i < 4; i += 1) {
+      dispatchDragExitEvents();
+      pressEscape();
+      hideStuckDropOverlays();
+      await sleep(120);
+    }
+  }
+
   async function tryDragDropUpload(fileObjects, label) {
     for (const target of getDropTargets()) {
       try {
         dispatchDragSequenceToTarget(fileObjects, target);
         if (await waitForAttachmentConfirmation(fileObjects, 2200)) {
+          await dismissUploadOverlay();
+          setTimeout(() => { dismissUploadOverlay().catch(() => {}); }, 400);
+          setTimeout(() => { dismissUploadOverlay().catch(() => {}); }, 1200);
           return { uploaded: true, uploadMethod: label };
         }
       } catch (_error) {
@@ -1709,6 +1838,7 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
 
   return (async () => {
     const upload = await uploadFiles(files || []);
+    await dismissUploadOverlay();
     const target = findComposer();
     if (!target) {
       try { navigator.clipboard.writeText(String(text || '')); } catch (_error) {}
@@ -1718,6 +1848,8 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
     insertText(target, String(text || ''));
 
     if (!submit) {
+      await dismissUploadOverlay();
+      setTimeout(() => { dismissUploadOverlay().catch(() => {}); }, 800);
       return { ok: true, uploaded: upload.uploaded, uploadMethod: upload.uploadMethod, uploadError: upload.uploadError, message: upload.uploaded ? `Uploaded ${files.length} file(s) and inserted request.` : 'Inserted request text.', submitted: false };
     }
 

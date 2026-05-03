@@ -3,7 +3,7 @@
 Rel.AI supports workspace context in two modes:
 
 - **Readable text**: inserts selected file contents directly into the ChatGPT composer. This is the most reliable mode for reasoning.
-- **Real ZIP upload**: creates an actual `.zip` file from selected local files and attaches it to the open ChatGPT tab, while inserting only instructions and a manifest.
+- **ZIP attachment**: creates an actual `.zip` file from selected local files and attaches it to the open ChatGPT tab, while inserting only instructions and a manifest.
 
 ChatGPT never receives direct filesystem access. Rel.AI reads local files only through the native host after you choose a workspace alias and explicit include paths.
 
@@ -31,10 +31,10 @@ Use `contextMode: "zip"` for real ZIP upload mode.
 2. Open the Rel.AI dashboard.
 3. Choose a workspace alias.
 4. Pick files/folders/globs.
-5. Choose **Readable text** or **Real ZIP upload**.
-6. Click **Insert request into ChatGPT**.
+5. Choose **Readable text** or **ZIP attachment**.
+6. Click **Create ChatGPT request**.
 
-In ZIP mode, Rel.AI attempts to attach a real `.zip` file through ChatGPT's file upload UI and then inserts the task instructions into the composer.
+In ZIP attachment mode, Rel.AI attaches a real `.zip` file when ChatGPT accepts the automated upload path, then inserts the task instructions into the composer. If attachment is not confirmed, Rel.AI offers a draggable ZIP fallback.
 
 ## Safety limits
 
@@ -48,4 +48,4 @@ In ZIP mode, Rel.AI attempts to attach a real `.zip` file through ChatGPT's file
 
 ## Recommendation
 
-Use **Readable text** for precise fixes over a few files. Use **Real ZIP upload** when you need to pass a folder tree with many small text files and want to keep the prompt short.
+Use **Readable text** for precise fixes over a few files. Use **ZIP attachment** when you need to pass a folder tree with many small text files and want to keep the prompt short.

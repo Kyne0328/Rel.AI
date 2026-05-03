@@ -365,3 +365,46 @@ body.dashboard .picker-list {
   line-height: 1.45;
   white-space: pre-wrap;
 }
+
+.small-note {
+  color: #4b5563;
+  font-size: 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.debug-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+
+.debug-card {
+  display: none;
+}
+
+body.debug-enabled .debug-card {
+  display: block;
+}
+
+body.dashboard header p {
+  color: #4b5563;
+  max-width: 760px;
+}
+
+button.primary {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+button.primary:hover {
+  background: #1f2937;
+}
+
+#status {
+  color: #176b2c;
+}

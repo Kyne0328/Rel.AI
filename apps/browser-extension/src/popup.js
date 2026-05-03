@@ -30,10 +30,13 @@ const dashboardArchiveChipEl = document.getElementById("dashboardArchiveChip");
 const dashboardArchiveNameEl = document.getElementById("dashboardArchiveName");
 const dashboardArchiveMetaEl = document.getElementById("dashboardArchiveMeta");
 const debugLogEl = document.getElementById("debugLog");
+const debugCardEl = document.getElementById("debugCard");
 
 let configSummary = null;
 let pickerDir = "";
 let lastArchive = null;
+let debugVisible = false;
+let debugRefreshTimer = null;
 
 bind("ping", () => sendMessage({ type: "relai.ping" }));
 bind("loadConfig", () => loadConfig(true));
@@ -63,6 +66,13 @@ if (dashboardArchiveChipEl) {
     }
   });
 }
+
+document.addEventListener("keydown", (event) => {
+  if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    setDebugVisible(!debugVisible, true);
+  }
+});
 
 inlineButtonsEl.addEventListener("change", async () => {
   const response = await chrome.runtime.sendMessage({
@@ -102,15 +112,33 @@ async function init() {
     }
   });
 
-  const draft = await chrome.storage.local.get({ relaiComposeDraft: null });
-  if (draft && draft.relaiComposeDraft) {
-    restoreDraft(draft.relaiComposeDraft);
+  const stored = await chrome.storage.local.get({ relaiComposeDraft: null, relaiDebugVisible: false });
+  if (stored && stored.relaiComposeDraft) {
+    restoreDraft(stored.relaiComposeDraft);
   }
 
+  setDebugVisible(Boolean(stored && stored.relaiDebugVisible), false);
   hideArchiveFallback();
   await loadConfig(false);
-  await refreshDebugLog();
-  window.setInterval(refreshDebugLog, 2500);
+}
+
+function setDebugVisible(visible, persist) {
+  debugVisible = Boolean(visible);
+  document.body.classList.toggle("debug-enabled", debugVisible);
+
+  if (persist) {
+    chrome.storage.local.set({ relaiDebugVisible: debugVisible }).catch(() => {});
+  }
+
+  if (debugVisible) {
+    refreshDebugLog(true).catch(() => {});
+    if (!debugRefreshTimer) {
+      debugRefreshTimer = window.setInterval(() => refreshDebugLog(false).catch(() => {}), 2500);
+    }
+  } else if (debugRefreshTimer) {
+    window.clearInterval(debugRefreshTimer);
+    debugRefreshTimer = null;
+  }
 }
 
 async function loadConfig(showResult) {
@@ -394,7 +422,7 @@ function bind(id, fn) {
   el.addEventListener("click", async () => {
     dashboardLog("button.clicked", { id, state: summarizeDashboardState() });
     el.disabled = true;
-    setStatus("Working...");
+    setStatus("Preparing request...");
     try {
       const response = await fn();
       dashboardLog("button.response", { id, ok: Boolean(response && response.ok), type: response && response.type, error: response && response.error });
@@ -420,14 +448,14 @@ function sendMessage(message) {
         return;
       }
       try { console.log("[Rel.AI Dashboard] response", message && message.type, response); } catch (_error) {}
-      refreshDebugLog().catch(() => {});
+      if (debugVisible) refreshDebugLog(false).catch(() => {});
       resolve(response || { ok: false, error: "No response from Rel.AI background service worker." });
     });
   });
 }
 
-async function refreshDebugLog() {
-  if (!debugLogEl) return;
+async function refreshDebugLog(force) {
+  if (!debugLogEl || (!force && !debugVisible)) return;
   const response = await new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: "relai.getDebugLog" }, (result) => {
       const lastError = chrome.runtime.lastError;
@@ -450,7 +478,7 @@ async function refreshDebugLog() {
 }
 
 async function copyDebugLog() {
-  await refreshDebugLog();
+  await refreshDebugLog(true);
   const text = debugLogEl ? debugLogEl.textContent || "" : "";
   await navigator.clipboard.writeText(text);
   return { ok: true, message: "Copied Rel.AI debug log to clipboard." };
@@ -458,12 +486,12 @@ async function copyDebugLog() {
 
 async function clearDebugLog() {
   const response = await sendMessage({ type: "relai.clearDebugLog" });
-  await refreshDebugLog();
+  await refreshDebugLog(true);
   return response && response.ok ? { ok: true, message: "Cleared Rel.AI debug log." } : response;
 }
 
 function renderResponse(response) {
-  refreshDebugLog().catch(() => {});
+  if (debugVisible) refreshDebugLog(false).catch(() => {});
   if (!response || !response.ok) {
     setStatus(response && response.error ? response.error : "Rel.AI request failed.", true);
     return;
@@ -485,10 +513,10 @@ function renderResponse(response) {
   }
 
   if (response.type === "relai.chatgptRequest") {
-    const mode = response.contextMode === "zip" ? "ZIP-upload" : "readable text";
+    const mode = response.contextMode === "zip" ? "ZIP attachment" : "readable context";
     const size = response.contextMode === "zip" && response.zipBytes ? `, zip ${response.zipBytes} bytes` : "";
     const chip = response.contextMode === "zip" && response.dragChipShown ? ", draggable ZIP chip shown in ChatGPT tab" : "";
-    const upload = response.contextMode === "zip" ? (response.archiveUploaded ? `, uploaded ${response.archiveName || "rel-ai-context.zip"}` : `, ZIP upload not confirmed${chip}${response.uploadError ? `: ${response.uploadError}` : ""}`) : "";
+    const upload = response.contextMode === "zip" ? (response.archiveUploaded ? `, uploaded ${response.archiveName || "rel-ai-context.zip"}` : `, ZIP attachment not confirmed${chip}${response.uploadError ? `: ${response.uploadError}` : ""}`) : "";
 
     if (response.contextMode === "zip" && !response.archiveUploaded && response.archiveBase64) {
       showArchiveFallback(response);

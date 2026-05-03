@@ -1,6 +1,6 @@
-# Rel.AI ChatGPT Request Bridge
+# Rel.AI
 
-Rel.AI is now a full-page ChatGPT -> patch -> local apply bridge:
+Rel.AI turns selected local workspace context into ChatGPT coding requests, then applies ChatGPT's returned patch through your local bridge:
 
 ```text
 You choose workspace alias + allowed files/folders/globs + task prompt
@@ -11,7 +11,7 @@ You choose workspace alias + allowed files/folders/globs + task prompt
 -> OpenCode is used only as fallback if patch/tests fail
 ```
 
-ChatGPT cannot silently browse your disk. Rel.AI reads local files through the native host only after you choose the workspace alias and allowed paths in the extension dashboard.
+ChatGPT cannot silently browse your disk. Rel.AI reads local files through the native host only after you choose the workspace alias and allowed paths in the Rel.AI dashboard.
 
 ## Requirements
 
@@ -73,7 +73,7 @@ Rel.AI intentionally keeps the fallback model configured locally. ChatGPT does n
 
 1. Open ChatGPT in Chrome or Edge.
 2. Click the Rel.AI extension icon. It opens the full-page dashboard in a new tab.
-3. Click **Load workspaces**.
+3. Click **Refresh workspaces**.
 4. Choose or type your workspace alias, for example `myapp`.
 5. Type what you want ChatGPT to do.
 6. Add allowed files, folders, or globs manually, or use the **Workspace picker**:
@@ -85,11 +85,11 @@ tests/**/*.test.ts
 ```
 
 7. Optionally choose a local `testCommandKey`, such as `unit`.
-8. Click **Insert request into ChatGPT**.
+8. Click **Create ChatGPT request**.
 9. Review the inserted request, then send it to ChatGPT.
 11. When ChatGPT returns the metadata block and diff block, click **Apply with Rel.AI**.
 
-The dashboard has an experimental **Submit to ChatGPT after inserting** checkbox. Keep it off if you want to review before sending.
+The dashboard has an optional **Submit to ChatGPT after inserting** checkbox. Keep it off if you want to review before sending.
 
 ## Workspace picker
 
@@ -143,9 +143,9 @@ The browser extension combines these two blocks when you click **Apply with Rel.
 
 The older JSON-with-`diff` format is still accepted for compatibility, but the two-block format is preferred.
 
-## Manual flows still included
+## Advanced flows
 
-The extension still supports:
+Rel.AI also supports:
 
 - inline **Apply with Rel.AI** buttons placed near ChatGPT message/code action controls
 - inline **Insert workspace context** buttons under context blocks
@@ -269,123 +269,50 @@ git apply --whitespace=warn /tmp/relai-diff-*/patch.diff
 
 So the actual file modifications are done by Git patch application, not by ChatGPT and not by the browser extension. OpenCode only runs if fallback is enabled and patch application or tests fail.
 
-## Troubleshooting apply buttons
+## Troubleshooting
 
-Only one **Apply with Rel.AI** button should appear per valid apply response. If you still see duplicates after updating, reload the unpacked extension and refresh the ChatGPT tab. Existing old buttons from a previous content script can remain on already-open pages until refresh.
+Only one **Apply with Rel.AI** button should appear per valid apply response. If an old ChatGPT tab still shows duplicates, reload the unpacked extension and refresh the ChatGPT tab.
 
-If the button says it is still applying, the native host is usually running `git apply`, a configured test command, or OpenCode fallback. In v0.9.4, fallback is disabled by default to avoid long accidental waits.
+If patch application takes longer than expected, the native host is usually running `git apply`, a configured test command, or OpenCode fallback. Fallback runs only when enabled.
 
+## ZIP attachment mode
 
-## v0.9.4 notes
+The dashboard has a **Context packing** selector:
 
-- The extension action now opens a full-page Rel.AI dashboard tab instead of a small popup. You can bookmark `dashboard.html` from the extension page after opening it.
-- Inline apply now opens a pre-apply preview showing workspace, affected files, fallback status, test key, and the unified diff before running `git apply`.
-- The inline Apply button is placed near ChatGPT message/code action controls when possible, including next to the sprite icon `#f6d0e2`; it should no longer appear at the far left of the page.
+- **Readable context**: recommended for precise fixes across a small number of files. Rel.AI inserts selected files as fenced code blocks.
+- **ZIP attachment**: recommended for larger folder context. Rel.AI packages selected readable files into a real `.zip` attachment and inserts only instructions plus a manifest.
 
+ZIP attachment mode still uses workspace aliases, include/exclude rules, `.gitignore`-aware file discovery, secret-path blocking, max file count, and size limits.
 
-## v0.9.8 real ZIP upload mode
-
-The dashboard still has a **Context packing** selector:
-
-- **Readable text**: the recommended default. Rel.AI inserts selected files as normal fenced code blocks so ChatGPT can reason over them.
-- **Real ZIP upload**: Rel.AI packages selected readable files into an actual `.zip` attachment and inserts only instructions plus a manifest into the prompt.
-
-ZIP mode still uses the same workspace alias, include/exclude rules, `.gitignore`-aware file discovery, secret-path blocking, max file count, and max byte limits. Oversized ZIP payloads are blocked before they are sent through the browser/native bridge.
-
-## Real ZIP upload mode
-
-Rel.AI 0.9.8 changes ZIP mode from "base64 pasted into the prompt" to a real `.zip` file attachment.
-
-When you choose **Real ZIP upload** in the dashboard:
-
-1. The native host reads only your selected allowlisted files/folders/globs.
-2. It creates an actual ZIP archive in memory.
-3. The browser extension injects that ZIP as a `File` object into ChatGPT's upload/drop handler.
-4. The composer receives only the task instructions and manifest, not the full source text or base64 ZIP chunks.
-
-This is shorter and cleaner than pasting base64, but it still depends on ChatGPT's current web upload UI. If upload injection fails, switch back to **Readable text** or select fewer files.
-
-Because native messaging has practical message-size limits, Rel.AI blocks oversized ZIP responses by default. If the ZIP is too large, select fewer folders/files.
-
-## v0.9.10 ZIP upload changes
-
-Manual drag/drop works in ChatGPT because the browser supplies a trusted OS-backed file. Synthetic drag/drop from a normal content script may be ignored by ChatGPT.
-
-Rel.AI 0.9.10 adds a stronger automatic upload path:
-
-1. the native host writes the ZIP to a temporary real file under your OS temp directory;
-2. the browser extension uses Chrome DevTools Protocol through the `debugger` permission;
-3. it first tries `Input.dispatchDragEvent` with the real ZIP path, which is closer to a manual drag/drop;
-4. if that fails, it tries file-chooser interception and `DOM.setFileInputFiles`;
-5. if that fails, it falls back to the older page-level drag/drop, paste, and file-input attempts.
-
-Chrome will show a debugger-permission warning for this version. That is expected. Rel.AI attaches only long enough to set the ZIP file input, then detaches.
-
-If automatic ZIP upload still fails, use **Readable text** mode or manually drag the generated ZIP. This can happen if ChatGPT changes or blocks its upload UI.
+If ChatGPT does not confirm the automatic attachment, Rel.AI offers a draggable ZIP card fallback. Manual drag/drop remains available as a last resort because it uses the browser's trusted OS-backed file path.
 
 ## Extension context invalidated
 
-If Chrome shows `Extension context invalidated`, refresh the ChatGPT tab after reloading or replacing the unpacked extension. Version 0.9.10 makes the content script exit safely instead of repeatedly throwing, but an already-open ChatGPT page can still contain an old script from the previous extension load.
+If Chrome shows `Extension context invalidated`, refresh the ChatGPT tab after reloading or replacing the unpacked extension. Rel.AI exits stale content scripts safely, but an already-open ChatGPT page can still contain an old script from the previous extension load.
 
 
-## ZIP upload troubleshooting
+## ZIP attachment behavior
 
-ZIP mode now tries the closest automatic path to a real manual upload:
+ZIP attachment mode keeps the ChatGPT prompt compact by attaching a real `.zip` archive and inserting only the request instructions plus a manifest. Rel.AI first tries the upload method that has proven most reliable in current ChatGPT web sessions: `main-world-drag-drop`. Debugger and file-input paths remain available as fallbacks.
 
-1. Chrome DevTools Protocol real-path drag/drop using `Input.dispatchDragEvent`.
-2. Chrome DevTools Protocol file-chooser interception.
-3. Direct file input setting.
-4. Page drag/drop, paste, and menu/input fallbacks.
+If ChatGPT does not confirm the attachment, Rel.AI shows a ZIP attachment fallback. You can show a draggable ZIP card in the ChatGPT tab or download the generated ZIP and drag it into ChatGPT manually.
 
-If ChatGPT still refuses the file, use the dashboard status output. It will report the failed method chain. Manual drag/drop remains the guaranteed fallback because browsers mark that as a real user/OS-backed file operation, while extensions may be treated as synthetic automation by the page.
+## Diagnostics
 
-## v0.9.12 assisted ZIP upload fallback
+Diagnostics are hidden by default. Open the Rel.AI dashboard and press **Ctrl+Shift+D** to show or hide the local diagnostics panel.
 
-If ChatGPT accepts the ZIP when you manually drag/drop it but rejects every extension-driven upload method, Rel.AI now treats that as an expected browser trust boundary instead of a silent failure.
+Use diagnostics only when troubleshooting bridge, ZIP attachment, or patch-apply behavior. The log is stored locally by the extension and is not sent anywhere unless you copy it.
 
-When ZIP mode inserts the request but upload is not confirmed, the dashboard shows a **ZIP upload fallback** panel with:
+## Version 0.9.22
 
-- **Show draggable ZIP in ChatGPT tab or Download generated ZIP**: downloads the exact ZIP Rel.AI built from the selected workspace files.
-- **Copy temp path**: copies the native-host temp path when available.
-
-Use it like this:
-
-1. Build the request in ZIP mode.
-2. If status says `ZIP upload not confirmed`, click **Show draggable ZIP in ChatGPT tab or Download generated ZIP**.
-3. Drag the downloaded ZIP into the open ChatGPT tab.
-4. Wait until ChatGPT shows the attachment.
-5. Send the inserted prompt.
-
-This is less automatic, but it uses the upload path you confirmed works: a real user drag/drop of a real ZIP file.
+- Dismisses ChatGPT's stuck drag-and-drop upload overlay after ZIP attachment attempts.
+- Keeps diagnostics hidden by default; press Ctrl+Shift+D in the dashboard to reveal them.
+- Updates dashboard copy to use release-ready product language.
 
 
-## ZIP assisted upload fallback
+## v0.9.22
 
-If ChatGPT rejects automatic ZIP upload, Rel.AI now places a draggable ZIP chip inside the open ChatGPT tab. Drag that chip into the ChatGPT composer/upload area, wait for the attachment to appear, then send the inserted prompt. This avoids downloading the ZIP first while still using a real user drag gesture.
-
-## v0.9.15 diagnostics build
-
-This build adds a Diagnostics panel to the Rel.AI dashboard and console logging with the prefix `[Rel.AI]` / `[Rel.AI Dashboard]` / `[Rel.AI Content]`.
-
-When ZIP upload or the draggable chip fails:
-
-1. Open the Rel.AI dashboard.
-2. Run the ZIP request again.
-3. Scroll to Diagnostics.
-4. Click **Copy debug log**.
-5. Share the copied log when reporting the bug.
-
-If Chrome DevTools is open on the ChatGPT tab, Chrome debugger-based upload attempts may conflict. Close ChatGPT DevTools before testing automatic ZIP upload. The dashboard Diagnostics panel should still capture background-service-worker events.
-
-## v0.9.16 diagnostic note
-
-If Diagnostics shows only `relai.getConfigSummary` and repeated `relai.getDebugLog`, the request-builder action did not leave the dashboard. v0.9.16 logs dashboard button binding, clicks, validation failures, and compose sends into the same Diagnostics panel.
-
-After clicking **Insert request into ChatGPT**, the Diagnostics panel should include:
-
-- `dashboard.button.clicked`
-- `dashboard.compose.validate.start`
-- either `dashboard.compose.validate.fail` or `dashboard.compose.send`
-- `background.message.received` with `relai.composeChatGPTRequest`
-
-If you do not see `dashboard.button.clicked`, the dashboard page is stale or the extension was not fully reloaded.
+- Uses ChatGPT MAIN-world drag/drop as the primary ZIP upload path.
+- Moves Chrome debugger/CDP upload methods behind the page-context upload path.
+- Improves cleanup for stuck ChatGPT upload overlays after ZIP upload.
+- Keeps diagnostics hidden behind Ctrl+Shift+D in the Rel.AI dashboard.

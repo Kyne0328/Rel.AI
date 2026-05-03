@@ -3,34 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Rel.AI Dashboard</title>
+  <title>Rel.AI</title>
   <link rel="stylesheet" href="src/popup.css">
 </head>
 <body class="dashboard">
   <main>
     <header>
-      <h1>Rel.AI Dashboard</h1>
-      <p>Build ChatGPT requests from allowlisted local files, insert them into an open ChatGPT tab, then preview and apply returned diffs.</p>
+      <h1>Rel.AI</h1>
+      <p>Create ChatGPT coding requests from selected workspace context, attach ZIP context when useful, and apply returned patches through your local Rel.AI bridge.</p>
     </header>
 
     <section class="status-row">
       <button id="ping">Check bridge</button>
-      <button id="loadConfig">Load workspaces</button>
-      <button id="copyDebugLog" type="button">Copy debug log</button>
-      <button id="clearDebugLog" type="button">Clear debug log</button>
-      <span id="status">Not checked</span>
+      <button id="loadConfig">Refresh workspaces</button>
+      <span id="status">Ready</span>
     </section>
 
-    <section class="debug-card">
+    <section id="debugCard" class="debug-card" aria-live="polite">
       <details open>
         <summary>Diagnostics</summary>
-        <p class="small-warning">Use this while ZIP upload/chip injection is being debugged. The log is stored locally in the extension and does not leave your browser unless you copy it.</p>
-        <pre id="debugLog" class="debug-log">No debug events yet.</pre>
+        <p class="small-note">Local diagnostic log. Press Ctrl+Shift+D to hide or show this panel.</p>
+        <div class="debug-actions">
+          <button id="copyDebugLog" type="button">Copy diagnostics</button>
+          <button id="clearDebugLog" type="button">Clear diagnostics</button>
+        </div>
+        <pre id="debugLog" class="debug-log">Diagnostics hidden.</pre>
       </details>
     </section>
 
     <section class="composer-card">
-      <h2>Make a ChatGPT code request</h2>
+      <h2>New request</h2>
 
       <label for="workspace">Workspace alias</label>
       <select id="workspace"></select>
@@ -39,16 +41,16 @@
       <label for="taskTitle">Title</label>
       <input id="taskTitle" type="text" placeholder="Fix auth refresh bug">
 
-      <label for="taskPrompt">What do you want ChatGPT to do?</label>
-      <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Explain the bug or feature. Rel.AI will attach selected workspace files and instructions for ChatGPT to return metadata + a separate unified diff block."></textarea>
+      <label for="taskPrompt">Task</label>
+      <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Describe the change you want. Rel.AI will attach the selected context and ask ChatGPT to return apply metadata plus a separate unified diff."></textarea>
 
 
-      <label for="includePaths">Allowed files / folders / globs</label>
+      <label for="includePaths">Files and folders to include</label>
       <textarea id="includePaths" spellcheck="false" placeholder="src/auth.ts&#10;src/session.ts&#10;tests/**/*.test.ts"></textarea>
 
       <section class="workspace-picker">
         <div class="picker-title-row">
-          <strong>Workspace picker</strong>
+          <strong>Browse workspace</strong>
           <button id="browseWorkspace" type="button">Browse</button>
         </div>
         <div class="picker-controls">
@@ -61,7 +63,7 @@
         </div>
       </section>
 
-      <label for="excludePaths">Exclude paths, optional</label>
+      <label for="excludePaths">Exclude paths</label>
       <textarea id="excludePaths" spellcheck="false" placeholder="**/*.snap&#10;dist/"></textarea>
 
       <div class="grid-2">
@@ -77,10 +79,10 @@
 
       <label for="contextMode">Context packing</label>
       <select id="contextMode">
-        <option value="readable">Readable text - best for ChatGPT reasoning</option>
-        <option value="zip">Real ZIP upload - shortest prompt, attached as file</option>
+        <option value="readable">Readable context</option>
+        <option value="zip">ZIP attachment</option>
       </select>
-      <p class="small-warning">ZIP mode now creates a real .zip attachment and inserts only instructions plus a manifest. If ChatGPT cannot inspect the attached archive, resend fewer files in Readable text mode.</p>
+      <p class="small-warning">ZIP attachment keeps the prompt short by attaching a real archive and inserting only instructions plus a manifest. Use readable context for smaller, highly targeted requests.</p>
 
       <label for="testCommandKey">Test command key, optional</label>
       <select id="testCommandKey"></select>
@@ -88,21 +90,21 @@
 
       <label class="checkbox">
         <input id="fallbackEnabled" type="checkbox">
-        Enable OpenCode fallback if patch or tests fail
+        Use OpenCode fallback when patch application or tests fail
       </label>
 
       <label class="checkbox warning-checkbox">
         <input id="autoSubmit" type="checkbox">
-        Submit to ChatGPT after inserting, experimental
+        Submit to ChatGPT after inserting
       </label>
 
-      <button id="composeRequest" class="primary">Insert request into ChatGPT</button>
+      <button id="composeRequest" class="primary">Create ChatGPT request</button>
     </section>
 
 
     <section id="archiveFallback" class="archive-fallback hidden" aria-live="polite">
-      <h2>ZIP upload fallback</h2>
-      <p id="archiveFallbackText">Automatic upload was not confirmed. Rel.AI can show a draggable ZIP chip inside the ChatGPT tab. Drag that chip into the composer, wait for the attachment, then send the inserted prompt.</p>
+      <h2>ZIP attachment fallback</h2>
+      <p id="archiveFallbackText">Automatic attachment was not confirmed. Rel.AI can show a draggable ZIP card inside the ChatGPT tab. Drag it into the composer, wait for the attachment, then send the inserted request.</p>
       <div id="dashboardArchiveChip" class="dashboard-archive-chip hidden" draggable="true" role="button" tabindex="0" aria-label="Drag generated ZIP into ChatGPT">
         <div class="dashboard-archive-icon">ZIP</div>
         <div class="dashboard-archive-copy">
@@ -111,9 +113,9 @@
         </div>
       </div>
       <div class="archive-actions">
-        <button id="showArchiveChip" type="button">Show draggable ZIP in ChatGPT tab</button>
-        <button id="downloadArchive" type="button">Download generated ZIP</button>
-        <button id="copyArchivePath" type="button">Copy temp path</button>
+        <button id="showArchiveChip" type="button">Show ZIP card in ChatGPT</button>
+        <button id="downloadArchive" type="button">Download ZIP</button>
+        <button id="copyArchivePath" type="button">Copy ZIP path</button>
       </div>
       <code id="archivePathText"></code>
     </section>
@@ -121,7 +123,7 @@
     <section>
       <label class="checkbox">
         <input id="inlineButtons" type="checkbox">
-        Show inline Rel.AI buttons on ChatGPT responses
+        Show Rel.AI actions on ChatGPT responses
       </label>
     </section>
 
@@ -134,22 +136,22 @@
     </section>
 
     <details>
-      <summary>Manual blocks</summary>
+      <summary>Advanced tools</summary>
       <section>
-        <label for="contextManual">Manual rel-ai-context block</label>
+        <label for="contextManual">Context block</label>
         <textarea id="contextManual" spellcheck="false" placeholder="Paste a ```rel-ai-context block here"></textarea>
-        <button id="sendContextManual">Insert manual context</button>
+        <button id="sendContextManual">Insert context</button>
       </section>
 
       <section>
-        <label for="manual">Manual rel-ai-apply block</label>
+        <label for="manual">Apply block</label>
         <textarea id="manual" spellcheck="false" placeholder="Paste metadata + diff blocks, raw JSON, or unified diff here"></textarea>
-        <button id="sendManual">Apply manual patch</button>
+        <button id="sendManual">Apply patch</button>
       </section>
     </details>
 
     <section class="hint">
-      <p>The extension reads only the workspace alias and paths you choose, inserts them into the open ChatGPT tab, and asks ChatGPT to return a patch Rel.AI can apply.</p>
+      <p>Rel.AI only reads the workspace aliases and paths you choose. Patches are applied locally through Git after you review the ChatGPT response.</p>
     </section>
   </main>
   <script src="src/popup.js"></script>
