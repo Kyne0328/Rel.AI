@@ -130,6 +130,8 @@ function setDebugVisible(visible, persist) {
     chrome.storage.local.set({ relaiDebugVisible: debugVisible }).catch(() => {});
   }
 
+  chrome.runtime.sendMessage({ type: "relai.setDebugLogging", enabled: debugVisible }).catch(() => {});
+
   if (debugVisible) {
     refreshDebugLog(true).catch(() => {});
     if (!debugRefreshTimer) {
