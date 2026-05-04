@@ -7,12 +7,13 @@ const { spawnSync } = require("node:child_process");
 
 const DEFAULT_MAX_CONTEXT_FILES = 25;
 const DEFAULT_MAX_CONTEXT_CHARS = 120000;
-const DEFAULT_MAX_FILE_BYTES = 80000;
+const DEFAULT_MAX_FILE_BYTES = 200000;
+const MAX_ZIP_FILE_BYTES = 50 * 1024 * 1024;
 const DEFAULT_PROJECT_TREE_ENTRIES = 800;
 const DEFAULT_FULL_REPO_MAX_FILES = 500;
 const FULL_REPO_SCOPE = "full";
 const MAX_ZIP_UPLOAD_BASE64_CHARS = 32 * 1024 * 1024;
-const MAX_ZIP_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_ZIP_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 const SECRET_PATH_PATTERNS = [
   /(^|\/)\.env($|[./-])/i,
@@ -113,9 +114,11 @@ function buildContextBundle(contextRequest, workspace, config) {
     throw new Error("No readable context files matched the request.");
   }
 
-  const collected = collectReadableFiles(files, workspace.path, maxFileBytes);
+  const effectiveMaxFileBytes = contextMode === "zip" ? MAX_ZIP_FILE_BYTES : maxFileBytes;
+  const collected = collectReadableFiles(files, workspace.path, effectiveMaxFileBytes);
   if (collected.included.length === 0) {
-    throw new Error("All matched context files were skipped due to size, binary detection, or context limits.");
+    const detail = collected.skipped.slice(0, 6).map((s) => `${s.path} (${s.reason})`).join("; ");
+    throw new Error(`All matched context files were skipped.${detail ? ` ${detail}${collected.skipped.length > 6 ? ` and ${collected.skipped.length - 6} more` : ""}.` : ""}`);
   }
 
   if (contextMode === "zip") {
@@ -180,7 +183,8 @@ function buildReadableContextBundle(contextRequest, workspace, collected, maxCha
   }
 
   if (included.length === 0) {
-    throw new Error("All matched context files were skipped due to size, binary detection, or context limits.");
+    const detail = skipped.slice(0, 6).map((s) => `${s.path} (${s.reason})`).join("; ");
+    throw new Error(`All matched context files exceeded the readable bundle limit (${maxChars} chars).${detail ? ` ${detail}${skipped.length > 6 ? ` and ${skipped.length - 6} more` : ""}.` : ""} Try ZIP context mode or select fewer/smaller files.`);
   }
 
   if (skipped.length > 0) {

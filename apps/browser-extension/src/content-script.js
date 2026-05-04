@@ -264,6 +264,10 @@
       return { anchor: singleApply.block, text: ensureFence(singleApply.text, "rel-ai-apply") };
     }
 
+    if (meta) {
+      return { anchor: meta.block, text: ensureFence(meta.text, "rel-ai-apply") };
+    }
+
     return null;
   }
 
@@ -294,14 +298,16 @@
 
     const status = document.createElement("span");
     status.className = STATUS_CLASS;
-    status.textContent = "";
+    status.textContent = /```(?:diff|rel-ai-diff|relai-diff)/i.test(text) ? "" : "Diff will be read from Canvas.";
 
     button.addEventListener("click", async () => {
       if (button.dataset.relaiBusy === "1") {
         return;
       }
 
-      const decision = await showApplyPreview(text);
+      const augmented = augmentWithCanvas(text);
+      const fromCanvas = augmented !== text;
+      const decision = await showApplyPreview(augmented, { fromCanvas });
       if (!decision || decision.action === "cancel") {
         status.textContent = "Cancelled.";
         return;
@@ -632,14 +638,17 @@
     const latest = getLatestBlock(kind);
 
     if (mode === "selection") {
-      return { ok: Boolean(selected), text: selected, source: "selection" };
+      const text = kind === "apply" ? augmentWithCanvas(selected) : selected;
+      return { ok: Boolean(text), text, source: "selection" };
     }
 
     if (mode === "latest") {
-      return { ok: Boolean(latest), text: latest, source: `latest-${kind}-block` };
+      const text = kind === "apply" ? augmentWithCanvas(latest) : latest;
+      return { ok: Boolean(text), text, source: `latest-${kind}-block` };
     }
 
-    const text = selected || latest;
+    let text = selected || latest;
+    if (kind === "apply") text = augmentWithCanvas(text);
     return { ok: Boolean(text), text, source: selected ? "selection" : `latest-${kind}-block` };
   }
 
@@ -1003,7 +1012,7 @@
     }
   }
 
-  function showApplyPreview(text) {
+  function showApplyPreview(text, opts) {
     return new Promise((resolve) => {
       const preview = parseApplyPreview(text);
       const overlay = document.createElement("div");
@@ -1032,6 +1041,7 @@
       addPreviewField(metaGrid, "Fallback from patch", preview.fallbackEnabled ? "enabled" : "disabled");
       if (preview.summary) addPreviewField(metaGrid, "Summary", preview.summary);
       addPreviewField(metaGrid, "Files", preview.files.length ? preview.files.join("\n") : "No recognizable paths found");
+      if (opts && opts.fromCanvas) addPreviewField(metaGrid, "Diff source", "Canvas");
 
       const fallbackControl = document.createElement("label");
       fallbackControl.className = "relai-preview-toggle";
@@ -1283,6 +1293,27 @@
       return response.message || "Patch applied to the workspace files.";
     }
     return response.message || "Rel.AI finished.";
+  }
+
+  function getCanvasContent() {
+    for (const el of document.querySelectorAll(".ProseMirror")) {
+      if (el.closest("form")) continue;
+      if (el.closest('[data-testid="prompt-textarea"]')) continue;
+      if (!isVisible(el)) continue;
+      const text = (el.innerText || el.textContent || "").trim();
+      if (text.length > 10) return text;
+    }
+    return null;
+  }
+
+  function augmentWithCanvas(text) {
+    if (!text) return text;
+    if (/```(?:diff|rel-ai-diff|relai-diff)/i.test(text)) return text;
+    const canvas = getCanvasContent();
+    if (!canvas) return text;
+    const canvasNorm = normalizeBlockText(canvas);
+    if (!looksLikeDiffBlock(canvasNorm)) return text;
+    return `${text}\n\n${ensureFence(canvasNorm, "diff")}`;
   }
 
   function injectStyles() {

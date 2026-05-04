@@ -461,6 +461,18 @@ Patch request:
 
 ## Version history
 
+### 0.9.48
+
+- Raises `MAX_ZIP_FILE_BYTES` from 5 MB to 50 MB so large individual files are no longer rejected when building ZIP context bundles.
+- Raises `MAX_ZIP_UPLOAD_BYTES` from 25 MB to 100 MB so larger workspace ZIPs can be uploaded to ChatGPT. ChatGPT's per-file upload limit is 512 MB; the previous 25 MB cap was unnecessarily conservative.
+- Raises `DEFAULT_MAX_FILE_BYTES` from 80 KB to 200 KB so more source files pass the per-file size check in readable context mode.
+- Fixes "All matched context files were skipped" error to include the specific file paths and skip reasons (e.g. `src/api.ts (larger than 200000 bytes)`) instead of the generic message that gave no actionable information.
+- Fixes readable bundle error to also report file details and suggest switching to ZIP context mode when all files exceed the bundle character limit.
+- Canvas diff support: Rel.AI now reads the unified diff from the ChatGPT Canvas document when the diff is not present in the chat message. ChatGPT is instructed to write long diffs (80+ lines) to Canvas to avoid hitting the response length limit. The inline Apply button shows "Diff will be read from Canvas." when only a metadata block is detected in the chat. The pre-apply preview shows a "Diff source: Canvas" badge when the diff came from Canvas. Both the inline button path and the popup "Apply latest" path augment with Canvas content automatically.
+- Improves Gemini prompt improvement card: "Improve with Gemini" button is always visible in the card header; model and API key settings are collapsed into a `<details>` block; status changes to a green pill badge when a key is configured.
+- Fixes `input[type="password"]` missing from popup CSS input selectors so the Gemini API key field matches all other inputs.
+- Groups popup action buttons into labeled Context and Apply patch sections.
+
 ### 0.9.47
 
 - Fixes `input[type="password"]` missing from the CSS input selector, so the Gemini API key field now matches all other inputs (border, border-radius, padding, font).

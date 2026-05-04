@@ -1721,6 +1721,8 @@ Instructions for your response:
 - Produce code changes as a unified git diff that applies cleanly with git apply --check.
 - Include a brief summary in the rel-ai-apply metadata so the user understands what will change before applying.
 - Do NOT put the diff inside a JSON string. Raw multiline diffs inside JSON break parsing.
+- If the unified diff is long (more than ~80 lines) or the response would otherwise be cut off by the length limit: output ONLY the rel-ai-apply metadata block in this chat message and write the complete unified diff directly into the Canvas document (the side panel). Rel.AI reads Canvas automatically. In Canvas, write the raw diff starting with "diff --git" with no code fence.
+- If the diff fits comfortably in a single response, output both blocks in the chat as normal.
 - When ready to apply, reply with exactly two fenced code blocks and no extra prose:
 
 First block: rel-ai-apply metadata JSON only, no diff field and no title field:
@@ -1948,10 +1950,31 @@ function extractRelAiTextInPage(kind, mode) {
     return `\`\`\`${lang}\n${trimmed}\n\`\`\``;
   }
 
+  function getCanvasContent() {
+    for (const el of document.querySelectorAll(".ProseMirror")) {
+      if (el.closest("form")) continue;
+      if (el.closest('[data-testid="prompt-textarea"]')) continue;
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      const text = (el.innerText || el.textContent || "").trim();
+      if (text.length > 10) return text;
+    }
+    return null;
+  }
+
+  function augmentWithCanvas(text) {
+    if (!text) return text;
+    if (/```(?:diff|rel-ai-diff|relai-diff)/i.test(text)) return text;
+    const canvas = getCanvasContent();
+    if (!canvas) return text;
+    if (!/^diff --git /m.test(canvas) && !/^--- a\//m.test(canvas)) return text;
+    return `${text}\n\n\`\`\`diff\n${canvas.trim()}\n\`\`\``;
+  }
+
   function collectApplyTextForBlock(block, text) {
     const message = getMessageContainer(block);
     if (!message) {
-      return text;
+      return augmentWithCanvas(text);
     }
     const blocks = [...message.querySelectorAll("pre")].map((node) => normalizeBlockText(node.innerText || node.textContent || ""));
     const meta = blocks.find((item) => /```(?:rel-ai-apply|relai-apply|rel-ai-patch)/i.test(item) || (item.startsWith("{") && /"version"\s*:\s*1/.test(item)));
@@ -1959,7 +1982,10 @@ function extractRelAiTextInPage(kind, mode) {
     if (meta && diff && meta !== diff) {
       return `${ensureFence(meta, "rel-ai-apply")}\n\n${ensureFence(diff, "diff")}`;
     }
-    return text;
+    if (meta) {
+      return augmentWithCanvas(ensureFence(meta, "rel-ai-apply"));
+    }
+    return augmentWithCanvas(text);
   }
 
   function getLatestBlock() {
@@ -1985,14 +2011,17 @@ function extractRelAiTextInPage(kind, mode) {
   const latestBlock = getLatestBlock();
 
   if (mode === "selection") {
-    return { ok: Boolean(selectedText), text: selectedText, source: "selection" };
+    const text = kind === "apply" ? augmentWithCanvas(selectedText) : selectedText;
+    return { ok: Boolean(text), text, source: "selection" };
   }
 
   if (mode === "latest") {
-    return { ok: Boolean(latestBlock), text: latestBlock, source: `latest-${kind}-block` };
+    const text = kind === "apply" ? augmentWithCanvas(latestBlock) : latestBlock;
+    return { ok: Boolean(text), text, source: `latest-${kind}-block` };
   }
 
-  const text = selectedText || latestBlock;
+  let text = selectedText || latestBlock;
+  if (kind === "apply") text = augmentWithCanvas(text);
   return { ok: Boolean(text), text, source: selectedText ? "selection" : `latest-${kind}-block` };
 }
 
