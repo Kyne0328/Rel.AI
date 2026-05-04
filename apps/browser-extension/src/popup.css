@@ -165,6 +165,7 @@ label {
 
 input[type="text"],
 input[type="number"],
+input[type="password"],
 select,
 textarea {
   box-sizing: border-box;
@@ -178,6 +179,7 @@ textarea {
 
 input[type="text"]:focus,
 input[type="number"]:focus,
+input[type="password"]:focus,
 select:focus,
 textarea:focus {
   outline: none;
@@ -186,6 +188,7 @@ textarea:focus {
 
 input[type="text"],
 input[type="number"],
+input[type="password"],
 select {
   font-family: inherit;
 }
@@ -457,26 +460,208 @@ body.debug-enabled .debug-card {
 .gemini-card {
   border: 1px solid #e6dcff;
   border-radius: 10px;
-  padding: 10px;
+  padding: 12px;
   background: #fbf9ff;
   margin: 10px 0;
 }
 
+.gemini-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gemini-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .gemini-card h3 {
-  margin: 0 0 6px;
+  margin: 0;
   font-size: 14px;
+}
+
+.gemini-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(127,127,127,.25);
+  background: rgba(127,127,127,.08);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gemini-status.configured {
+  background: var(--success-bg);
+  border-color: rgba(22, 163, 74, .4);
+  color: var(--success);
+}
+
+.gemini-settings {
+  margin-top: 10px;
+  border-top: 1px solid #e6dcff;
+  padding-top: 8px;
+}
+
+.gemini-settings > summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
 }
 
 .gemini-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin: 8px 0;
+  margin: 8px 0 0;
 }
 
-#geminiInfo {
-  display: block;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: #333;
+.btn-gemini {
+  background: #f3f0ff;
+  border: 1px solid #c4b5fd;
+  color: #5b21b6;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-gemini:hover {
+  background: #ede9fe;
+  border-color: #a78bfa;
+}
+
+.btn-gemini:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.dashboard-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px;
+  border: 1px solid #dbe1ea;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(17, 24, 39, 0.10), transparent 32%),
+    linear-gradient(135deg, #ffffff 0%, #f4f7fb 100%);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+.dashboard-hero h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 210px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-heading h2,
+.section-heading h3 {
+  margin: 0;
+}
+
+.section-heading.compact {
+  margin-bottom: 4px;
+}
+
+.section-badge,
+.status-label {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #dbe1ea;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.dashboard-actions {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: var(--surface);
+}
+
+body.dashboard .status-row {
+  justify-content: flex-start;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+body.dashboard .composer-card,
+body.dashboard .archive-fallback,
+body.dashboard .debug-card,
+body.dashboard .opencode-card,
+body.dashboard .gemini-card,
+body.dashboard .workspace-picker,
+body.dashboard details {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+@media (max-width: 760px) {
+  .dashboard-hero,
+  .section-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-actions {
+    justify-content: stretch;
+    min-width: 0;
+  }
+
+  .hero-actions button {
+    flex: 1;
+  }
+
+  .actions-grid {
+    grid-template-columns: 1fr;
+  }
 }

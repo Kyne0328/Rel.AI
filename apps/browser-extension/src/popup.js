@@ -323,7 +323,8 @@ async function improvePromptWithGemini() {
 function renderGeminiStatus(response) {
   if (!geminiInfoEl) return;
   if (!response) {
-    geminiInfoEl.textContent = "Gemini not checked.";
+    geminiInfoEl.textContent = "Not checked";
+    geminiInfoEl.className = "gemini-status";
     return;
   }
   const model = response.geminiModel || (configSummary && configSummary.geminiModel) || "gemini-2.5-flash";
@@ -333,9 +334,13 @@ function renderGeminiStatus(response) {
   if (geminiModelEl && !geminiModelEl.value) {
     geminiModelEl.value = model;
   }
-  geminiInfoEl.textContent = configured
-    ? `Gemini configured. Model: ${model}`
-    : `Gemini API key not configured. Model: ${model}`;
+  if (configured) {
+    geminiInfoEl.textContent = `Configured · ${model}`;
+    geminiInfoEl.className = "gemini-status configured";
+  } else {
+    geminiInfoEl.textContent = `Not configured · ${model}`;
+    geminiInfoEl.className = "gemini-status";
+  }
 }
 
 function getSelectedWorkspaceAlias() {

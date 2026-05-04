@@ -461,6 +461,11 @@ Patch request:
 
 ## Version history
 
+### 0.9.47
+
+- Fixes `input[type="password"]` missing from the CSS input selector, so the Gemini API key field now matches all other inputs (border, border-radius, padding, font).
+- Redesigns the Gemini prompt improvement card: moves the **Improve with Gemini** button into the card header so it is always visible; collapses model and API key settings into a `<details>` block; replaces the plain `<code>` status line with a pill badge that turns green when a key is configured; uses a purple/violet button color matching the card theme.
+
 ### 0.9.46
 
 - Improves popup UI: adds CSS custom properties for consistent theming, groups action buttons into labeled **Context** and **Apply patch** sections, adds status indicator color states (green/red), improves button hierarchy with a bolder primary action, adds focus rings on inputs, and refines section spacing.

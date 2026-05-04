@@ -379,6 +379,9 @@ async function composeChatGPTRequest(contextRequest, task, autoSubmit, tabId) {
     attachedFiles: attachedFiles.map((file) => ({ name: file.name, hasPath: Boolean(file.path), hasBase64: Boolean(file.base64), base64Length: String(file.base64 || "").length }))
   });
   const inserted = await insertRequestIntoTab(tabId, promptText, autoSubmit, attachedFiles);
+  if (inserted && inserted.ok) {
+    await focusTab(tabId);
+  }
   relaiLog("compose.insert.result", inserted);
 
   return {
@@ -1605,18 +1608,38 @@ function insertRelAiRequestInPage(text, submit, files, preUploaded) {
 
 function makeTaskFileNote(response) {
   const info = response && response.taskMentionedFiles;
-  if (!info || ((!Array.isArray(info.included) || info.included.length === 0) && (!Array.isArray(info.missing) || info.missing.length === 0))) {
+  const skipped = Array.isArray(response && response.skipped) ? response.skipped : [];
+  if (!info && skipped.length === 0) {
     return "";
   }
 
-  const lines = ["Task-mentioned file check:"];
-  for (const item of (info.included || []).slice(0, 20)) {
-    lines.push(`- ${item.requested}: exists as ${item.path}. Use this exact path/case in the diff.`);
+  const lines = [];
+  if (info && ((Array.isArray(info.included) && info.included.length > 0) || (Array.isArray(info.missing) && info.missing.length > 0))) {
+    lines.push("Task-mentioned file check:");
+    for (const item of (info.included || []).slice(0, 20)) {
+      lines.push(`- ${item.requested}: exists as ${item.path}. Use this exact path/case in the diff.`);
+    }
+    for (const item of (info.missing || []).slice(0, 20)) {
+      lines.push(`- ${item.requested}: was not found in the selected workspace context. Ask for it with rel-ai-context if needed; do not guess.`);
+    }
+    lines.push("");
   }
-  for (const item of (info.missing || []).slice(0, 20)) {
-    lines.push(`- ${item.requested}: was not found in the selected workspace context. Ask for it with rel-ai-context if needed; do not guess.`);
+
+  if (skipped.length > 0) {
+    lines.push("Skipped context files:");
+    for (const item of skipped.slice(0, 30)) {
+      const path = item && item.path ? item.path : item && item.requested ? item.requested : "unknown path";
+      const reason = item && (item.reason || item.status || item.message) ? ` (${item.reason || item.status || item.message})` : "";
+      lines.push(`- ${path}${reason}`);
+    }
+    if (skipped.length > 30) {
+      lines.push(`- ... ${skipped.length - 30} more skipped file(s).`);
+    }
+    lines.push("If one of these files is required, immediately ask for only that exact path in a rel-ai-context block instead of guessing from the manifest or file tree.");
+    lines.push("");
   }
-  return `${lines.join("\n")}\n\n`;
+
+  return `${lines.join("\n")}\n`;
 }
 
 function buildChatGPTRequestPrompt(context, task, response) {
@@ -1682,6 +1705,7 @@ Context and correctness rules:
 - Directory globs must use only the form "subdir/**". Do not use "**", ".", workspace-wide globs, filename wildcards, or absolute paths.
 - When replying with rel-ai-context, use the same contextMode as this request: "${contextMode}". If this request used ZIP context, the follow-up context should also be ZIP. If this request used readable text, the follow-up should also be readable text.
 - The rel-ai-context JSON must use an include array for requested paths. Do not use requestedFiles or neededFiles in new responses.
+- If the context says all matched context files were skipped due to size, binary detection, or context limits, request the smallest exact additional file paths needed in a rel-ai-context block. Do not proceed from skipped-file names alone.
 - If broad repository context is required, ask for full repo upload mode only when narrower follow-up context is insufficient.
 - Keep paths relative to the workspace.
 - Do not include absolute paths or ../ paths.
@@ -2067,6 +2091,9 @@ async function contextText(text, source, tabId) {
       : [];
     const followUpPrompt = buildFollowUpContextPrompt(context, response);
     const inserted = await insertRequestIntoTab(tabId, followUpPrompt, false, attachedFiles);
+    if (inserted && inserted.ok) {
+      await focusTab(tabId);
+    }
     return {
       ...response,
       inserted: Boolean(inserted && inserted.ok),

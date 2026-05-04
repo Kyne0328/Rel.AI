@@ -8,14 +8,20 @@
 </head>
 <body class="dashboard">
   <main>
-    <header>
-      <h1>Rel.AI</h1>
-      <p>Create ChatGPT coding requests from selected workspace context, attach ZIP context when useful, and apply returned patches through your local Rel.AI bridge.</p>
+    <header class="dashboard-hero">
+      <div>
+        <p class="eyebrow">Local patch workflow</p>
+        <h1>Rel.AI Dashboard</h1>
+        <p>Create ChatGPT coding requests from selected workspace context, attach ZIP context when useful, and apply returned patches through your local Rel.AI bridge.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="ping" type="button">Check bridge</button>
+        <button id="loadConfig" type="button">Refresh workspaces</button>
+      </div>
     </header>
 
     <section class="status-row">
-      <button id="ping">Check bridge</button>
-      <button id="loadConfig">Refresh workspaces</button>
+      <span class="status-label">Status</span>
       <span id="status">Ready</span>
     </section>
 
@@ -32,7 +38,13 @@
     </section>
 
     <section class="composer-card">
-      <h2>New request</h2>
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Composer</p>
+          <h2>New request</h2>
+        </div>
+        <span class="section-badge">ChatGPT handoff</span>
+      </div>
 
       <label for="workspace">Workspace alias</label>
       <select id="workspace"></select>
@@ -43,23 +55,30 @@
       <textarea id="taskPrompt" class="large" spellcheck="true" placeholder="Describe the change you want. Rel.AI will attach selected context and ask ChatGPT to produce a plan or apply block that matches the current files."></textarea>
 
       <section class="gemini-card">
-        <h3>Prompt improvement</h3>
-        <p class="small-note">Optional. Save a Gemini API key locally, then use Gemini to tighten the task before sending it to ChatGPT. The key stays in your local Rel.AI config and is never inserted into ChatGPT.</p>
-        <div class="grid-2">
-          <label>
-            Gemini model
-            <input id="geminiModel" type="text" placeholder="gemini-2.5-flash">
-          </label>
-          <label>
-            API key
-            <input id="geminiApiKey" type="password" autocomplete="off" placeholder="leave blank to keep saved key">
-          </label>
+        <div class="gemini-card-header">
+          <div class="gemini-card-title">
+            <h3>Prompt improvement</h3>
+            <span id="geminiInfo" class="gemini-status">Not checked</span>
+          </div>
+          <button id="improvePrompt" type="button" class="btn-gemini">Improve with Gemini</button>
         </div>
-        <div class="gemini-actions">
-          <button id="saveGeminiSettings" type="button">Save Gemini settings</button>
-          <button id="improvePrompt" type="button">Improve task with Gemini</button>
-        </div>
-        <code id="geminiInfo">Gemini not checked.</code>
+        <details class="gemini-settings">
+          <summary>Configure Gemini</summary>
+          <p class="small-note">Save a Gemini API key locally. Key stays in your local Rel.AI config and is never inserted into ChatGPT.</p>
+          <div class="grid-2">
+            <label>
+              Model
+              <input id="geminiModel" type="text" placeholder="gemini-2.5-flash">
+            </label>
+            <label>
+              API key
+              <input id="geminiApiKey" type="password" autocomplete="off" placeholder="leave blank to keep saved key">
+            </label>
+          </div>
+          <div class="gemini-actions">
+            <button id="saveGeminiSettings" type="button">Save settings</button>
+          </div>
+        </details>
       </section>
 
       <label for="responseMode">Response mode</label>
@@ -141,7 +160,7 @@
         Submit to ChatGPT after inserting
       </label>
 
-      <button id="composeRequest" class="primary">Create ChatGPT request</button>
+      <button id="composeRequest" class="primary">Create ChatGPT request and switch to ChatGPT</button>
     </section>
 
     <section id="archiveFallback" class="archive-fallback hidden" aria-live="polite">
@@ -161,29 +180,45 @@
       </label>
     </section>
 
-    <section class="actions">
-      <h3>ChatGPT page actions</h3>
+    <section class="actions dashboard-actions">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">ChatGPT tab</p>
+          <h3>Page actions</h3>
+        </div>
+      </div>
       <p class="small-note">These buttons act on the currently open ChatGPT tab. Use them when inline buttons did not appear or you want to trigger an action from the dashboard.</p>
-      <button id="contextLatest"
-        title="Find the most recent rel-ai-context block in the open ChatGPT tab, read the requested workspace files, and insert them into the ChatGPT composer for you to review and send.">
-        Provide latest context request
-      </button>
-      <button id="contextSelected"
-        title="Use the text you have selected in the ChatGPT page as a rel-ai-context request, read the requested workspace files, and insert the result into the composer.">
-        Provide context from selection
-      </button>
-      <button id="sendLatest"
-        title="Find the most recent rel-ai-apply metadata + diff blocks in the open ChatGPT tab and apply the patch via your local git apply command. Opens a preview first.">
-        Apply latest patch block
-      </button>
-      <button id="sendSelected"
-        title="Use the text you have selected in the ChatGPT page as a patch block and apply it via your local git apply. Opens a preview first.">
-        Apply selected patch text
-      </button>
-      <button id="scan"
-        title="Force the content script to re-scan the ChatGPT page and re-render Apply and Provide context inline buttons on all visible response blocks.">
-        Rescan page for Rel.AI blocks
-      </button>
+      <div class="actions-grid">
+        <div class="actions-group">
+          <span class="actions-group-label">Context</span>
+          <button id="contextLatest"
+            title="Find the most recent rel-ai-context block in the open ChatGPT tab, read the requested workspace files, and insert them into the ChatGPT composer for you to review and send.">
+            Provide latest context request
+          </button>
+          <button id="contextSelected"
+            title="Use the text you have selected in the ChatGPT page as a rel-ai-context request, read the requested workspace files, and insert the result into the composer.">
+            Provide context from selection
+          </button>
+        </div>
+        <div class="actions-group">
+          <span class="actions-group-label">Patch</span>
+          <button id="sendLatest"
+            title="Find the most recent rel-ai-apply metadata + diff blocks in the open ChatGPT tab and apply the patch via your local git apply command. Opens a preview first.">
+            Apply latest patch block
+          </button>
+          <button id="sendSelected"
+            title="Use the text you have selected in the ChatGPT page as a patch block and apply it via your local git apply. Opens a preview first.">
+            Apply selected patch text
+          </button>
+        </div>
+        <div class="actions-group">
+          <span class="actions-group-label">Utilities</span>
+          <button id="scan"
+            title="Force the content script to re-scan the ChatGPT page and re-render Apply and Provide context inline buttons on all visible response blocks.">
+            Rescan page for Rel.AI blocks
+          </button>
+        </div>
+      </div>
     </section>
 
     <details>
