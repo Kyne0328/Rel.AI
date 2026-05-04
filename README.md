@@ -461,6 +461,12 @@ Patch request:
 
 ## Version history
 
+### 0.9.49
+
+- Fixes `looksLikeApplyMetadataObject` incorrectly matching plan blocks that contain a `prompt` field, now guarded with `!looksLikePlanBlock(meta.text)`.
+- Fixes multiple plan buttons appearing after tab switches or ChatGPT re-renders: `addPlanButton` now uses the same remove-then-add pattern as `addApplyButton`, including `data-relai-plan-button-id` cleanup.
+- Fixes stale plan buttons persisting after a plan was approved and ChatGPT replied with a patch: `scanMessage` now calls `removePlanControls(message)` when `hasPlan` is false, mirroring the existing `removeApplyControls` behavior.
+
 ### 0.9.48
 
 - Raises `MAX_ZIP_FILE_BYTES` from 5 MB to 50 MB so large individual files are no longer rejected when building ZIP context bundles.

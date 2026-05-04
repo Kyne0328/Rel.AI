@@ -146,6 +146,7 @@
   function scanMessage(message) {
     const blocks = [...message.querySelectorAll("pre")];
     let hasContextRequest = false;
+    let hasPlan = false;
 
     for (const block of blocks) {
       const text = normalizeBlockText(block.innerText || block.textContent || "");
@@ -155,7 +156,12 @@
       }
       if (text && looksLikePlanBlock(text)) {
         addPlanButton(block, text);
+        hasPlan = true;
       }
+    }
+
+    if (!hasPlan) {
+      removePlanControls(message);
     }
 
     if (!hasContextRequest) {
@@ -238,7 +244,7 @@
       }
 
       const parsed = parseJsonObjectFromBlockText(text);
-      if (parsed && looksLikeApplyMetadataObject(parsed)) {
+      if (parsed && looksLikeApplyMetadataObject(parsed) && !looksLikePlanBlock(text)) {
         const candidate = { block, text, parsed };
         if (typeof parsed.diff === "string" || Array.isArray(parsed.diffLines)) {
           singleApply = candidate;
@@ -264,7 +270,7 @@
       return { anchor: singleApply.block, text: ensureFence(singleApply.text, "rel-ai-apply") };
     }
 
-    if (meta) {
+    if (meta && !looksLikePlanBlock(meta.text)) {
       return { anchor: meta.block, text: ensureFence(meta.text, "rel-ai-apply") };
     }
 
@@ -426,16 +432,35 @@
     placeInlineControl(block, container);
   }
 
+  function removePlanControls(message) {
+    for (const node of message.querySelectorAll('.relai-patch-inline[data-relai-kind="plan"]')) {
+      node.remove();
+    }
+    delete message.dataset.relaiPlanButtonId;
+  }
+
   function addPlanButton(block, text) {
     const id = `plan-${hashText(text)}`;
-    if (hasInlineButton(block, id)) {
+    const message = getMessageContainer(block) || block.parentElement || block;
+    const existing = [...(message ? message.querySelectorAll('.relai-patch-inline[data-relai-kind="plan"]') : [])];
+
+    if (message && message.dataset.relaiPlanButtonId === id && existing.length === 1) {
       return;
+    }
+
+    for (const node of existing) {
+      node.remove();
+    }
+
+    if (message) {
+      message.dataset.relaiPlanButtonId = id;
     }
 
     const container = document.createElement("div");
     container.className = "relai-patch-inline";
     container.dataset.relaiKind = "plan";
     container.dataset.relaiButtonId = id;
+    container.dataset.relaiPlanButtonId = id;
 
     const button = document.createElement("button");
     button.type = "button";
